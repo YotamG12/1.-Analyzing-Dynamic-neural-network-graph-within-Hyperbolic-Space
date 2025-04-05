@@ -1,5 +1,11 @@
 from data_utilis import load_citation_data
-adj, features, labels, idx_train, idx_val, idx_test = load_citation_data("Cora", use_feats=True, data_path=".\data\Cora\raw")
+import os
+
+data_path = os.path.abspath("./data/Cora/raw")
+adj, features, labels, idx_train, idx_val, idx_test = load_citation_data(
+    "cora", use_feats=True, data_path=data_path
+)
+
 
 # Get number of nodes
 num_nodes = features.shape[0]
