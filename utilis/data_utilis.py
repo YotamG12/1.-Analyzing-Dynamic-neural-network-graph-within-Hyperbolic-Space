@@ -33,6 +33,7 @@ def load_citation_data(dataset_str, use_feats, data_path, split_seed=None):
     labels[test_idx_reorder, :] = labels[test_idx_range, :]
     labels = np.argmax(labels, axis=1)
 
+ 
     idx_test = test_idx_range.tolist()
     idx_train = list(range(len(y)))
     idx_val = list(range(len(y), len(y) + 500))

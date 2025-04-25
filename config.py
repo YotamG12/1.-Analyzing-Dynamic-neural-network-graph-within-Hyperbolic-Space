@@ -11,7 +11,7 @@ parser.add_argument('--nhid', type=int, default=32, help='dim of hidden embeddin
 parser.add_argument('--nout', type=int, default=32, help='dim of output embedding')
 
 # 2.experiments
-"""parser.add_argument('--split_count', type=str, default=12, help='Number of time slices')
+parser.add_argument('--split_count', type=str, default=12, help='Number of time slices')
 parser.add_argument('--max_epoch', type=int, default=200, help='number of epochs to train.')
 parser.add_argument('--testlength', type=int, default=1, help='length for test, default:3')
 parser.add_argument('--device', type=str, default='cpu', help='training device')
@@ -25,7 +25,7 @@ parser.add_argument('--debug_content', type=str, default='', help='debug_mode co
 parser.add_argument('--sampling_times', type=int, default=1, help='negative sampling times')
 parser.add_argument('--log_interval', type=int, default=20, help='log interval, default: 20,[20,40,...]')
 parser.add_argument('--debug_mode', type=int, default=0, help='debug_mode, 0: normal running; 1: debugging mode')
-parser.add_argument('--min_epoch', type=int, default=100, help='min epoch')"""
+parser.add_argument('--min_epoch', type=int, default=100, help='min epoch')
 
 # 3.models
 parser.add_argument('--model', type=str, default='AdiHS', help='model name')

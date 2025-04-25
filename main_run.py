@@ -1,105 +1,92 @@
-import os
-import sys
-import time
-from collections import OrderedDict
-import numpy as np
 import torch
-import torch.optim as optim
-import networkx as nx
-from node2vec import Node2Vec
-from model.AdiHS import AdiHs
-from config import args
-from utilis import data_utilis
+import torch.nn.functional as F
+import numpy as np
 from torch_geometric.utils import from_scipy_sparse_matrix
+from sklearn.ensemble import IsolationForest
+from sklearn.metrics import accuracy_score
+import matplotlib.pyplot as plt
 
+from config import args
+from model import AdiHS
+from utils.data_utilis import load_citation_data
+from node2vec import Node2Vec
+import networkx as nx
 
+# === Step 1: Load Cora dataset ===
+adj, features, labels, idx_train, idx_val, idx_test = load_citation_data(
+    dataset_str='cora', use_feats=True, data_path='./data/Cora/raw'
+)
+edge_index, _ = from_scipy_sparse_matrix(adj)
 
-"""BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(BASE_DIR)"""
+features = torch.FloatTensor(features.todense()).to(args.device)
+labels = torch.LongTensor(labels).to(args.device)
+edge_index = edge_index.to(args.device)
 
-class Runner(object):
-    def __init__(self, data):
-        self.data = data
-        self.len = data['time_length']
-        self.start_train = 0
-        self.train_shots = list(range(0, self.len - args.testlength))
-        self.test_shots = list(range(self.len - args.testlength, self.len))
+# === Step 2: Node2Vec Embedding ===
+G = nx.from_scipy_sparse_matrix(adj)
+node2vec = Node2Vec(G, dimensions=args.nfeat, walk_length=30, num_walks=200, workers=2)
+model_n2v = node2vec.fit(window=10, min_count=1)
+embedding_matrix = torch.tensor([model_n2v.wv[str(i)] for i in range(adj.shape[0])]).to(args.device)
 
-        # Node2Vec Embeddings
-        adj = self.data['adj']
-        G = nx.from_scipy_sparse_array(adj)
-        node2vec = Node2Vec(G, dimensions=64, walk_length=30, num_walks=200, workers=4)
-        model_n2v = node2vec.fit(window=10, min_count=1, batch_words=4)
-        embeddings = np.array([model_n2v.wv[str(node)] for node in G.nodes()])
-        self.embeddings = torch.FloatTensor(embeddings).to(args.device)
+# === Step 3: Simulate temporal slices ===
+T = 16
+node_features_over_time = torch.stack([
+    embedding_matrix + 0.01 * torch.randn_like(embedding_matrix) * t
+    for t in range(T)
+], dim=1)  # Shape: [N, T, F]
 
-        args.nfeat = self.embeddings.size(1)
-        self.x = self.embeddings
-        self.model = AdiHs(args, len(self.train_shots)).to(args.device)
+# === Step 4: Initialize AdiHs model ===
+args.num_nodes = features.shape[0]
+args.num_classes = labels.max().item() + 1
+model = AdiHs(args, time_length=T).to(args.device)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
-    def run(self, run_manager):
-        optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-        t_total0 = time.time()
-        test_results, min_loss = [0] * 5, 100000
-        best_epoch_auc = 0
-        patient_auc = 0
+# === Step 5: Train AdiHs with final time step ===
+for epoch in range(100):
+    model.train()
+    optimizer.zero_grad()
 
-        self.model.train()
-        for epoch in range(1, args.max_epoch + 1):
-            run_manager.begin_epoch()
-            t0 = time.time()
+    x_final = node_features_over_time[:, -1, :]  # shape: [N, F]
+    logits = model(edge_index, x=x_final, return_logits=True)
+    loss = F.cross_entropy(logits[idx_train], labels[idx_train])
+    loss.backward()
+    optimizer.step()
 
-            structural_out = []
-            for t in self.train_shots:
-                edge_index, pos_index, neg_index, activate_nodes, edge_weight, _, _ = prepare(self.data, t)
-                z = self.model(edge_index, self.x)  # [num_nodes, nout]
-                structural_out.append(z)
+    model.eval()
+    with torch.no_grad():
+        val_logits = model(edge_index, x=x_final, return_logits=True)
+        val_pred = val_logits[idx_val].max(1)[1]
+        acc_val = (val_pred == labels[idx_val]).float().mean().item()
+    print(f"Epoch {epoch:03d} | Loss: {loss.item():.4f} | Val Acc: {acc_val:.4f}")
 
-            structural_outputs = [g[:, None, :] for g in structural_out]
-            maximum_node_num = structural_outputs[-1].shape[0]
-            out_dim = structural_outputs[-1].shape[-1]
-            structural_outputs_padded = []
-            for out in structural_outputs:
-                zero_padding = torch.zeros(maximum_node_num - out.shape[0], 1, out_dim).to(out.device)
-                padded = torch.cat((out, zero_padding), dim=0)
-                structural_outputs_padded.append(padded)
+# === Step 6: Extract [N, T, F] output ===
+model.eval()
+temporal_outputs = []
+with torch.no_grad():
+    for t in range(T):
+        x_t = node_features_over_time[:, t, :]
+        h_t = model(edge_index=edge_index, x=x_t)
+        temporal_outputs.append(h_t)
+X = torch.stack(temporal_outputs, dim=1)  # [N, T, F]
 
-            structural_outputs_padded = torch.cat(structural_outputs_padded, dim=1)  # [N, T, F]
-            temporal_out = self.model.ddy_attention_layer(structural_outputs_padded)
-    """here will be the anomaly detection part"""
-          
-if __name__ == '__main__':
-    params = OrderedDict(
-        nhid=[args.nhid],
-        nout=[args.nout],
-        temporal_attention_layer_heads=[args.temporal_attention_layer_heads],
-        heads=[args.heads],
-        dataset=[args.dataset],
-        split_count=[args.split_count]
-    )
+# === Step 7: Apply TemporalAttentionLayer ===
+att_output = model.ddy_attention_layer(X)  # [N, T, F]
 
-    run_manager = RunManager()
-    for run in RunBuilder.get_runs(params):
-        run_manager.begin_run(run)
+# === Step 8: Flatten and Run Isolation Forest ===
+X_flat = att_output.reshape(X.shape[0], -1).cpu().numpy()
+clf = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
+clf.fit(X_flat)
+anomaly_scores = -clf.decision_function(X_flat)
+anomaly_labels = clf.predict(X_flat)  # 1 = normal, -1 = anomaly
 
-        args.nhid = run.nhid
-        args.nout = run.nout
-        args.temporal_attention_layer_heads = run.temporal_attention_layer_heads
-        args.heads = run.heads
-        args.dataset = run.dataset
-        args.split_count = f'{run.split_count}-split'
-        args.output_folder = f'../data/output/log/{args.dataset}/{args.model}/{args.split_count}/'
+# === Step 9: Visualize or Print Anomaly Results ===
+print("Top 10 Anomalous Nodes:", anomaly_scores.argsort()[-10:][::-1])
 
-        data = loader(dataset=args.dataset, split_count=args.split_count)
-        args.num_nodes = data['num_nodes']
-        set_random(args.seed)
-        init_logger(prepare_dir(args.output_folder) + args.dataset + '.txt')
-
-        try:
-            runner = Runner(data)
-            runner.run(run_manager)
-            run_manager.save(args.output_folder, args.split_count, args.heads, args.temporal_attention_layer_heads, args.nout, args.nhid)
-        except RuntimeError:
-            logger.info(f'current args except runtime error')
-
-        logger.info(f'current args: {args}')
+plt.figure(figsize=(8, 4))
+plt.hist(anomaly_scores, bins=50)
+plt.title("Anomaly Score Distribution")
+plt.xlabel("Anomaly Score")
+plt.ylabel("Frequency")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
