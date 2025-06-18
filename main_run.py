@@ -19,6 +19,7 @@ from pathlib import Path
 from tabulate import tabulate
 from matplotlib.table import Table
 from visualFunction import print_top_bottom_anomalous_papers, highlight_paper, plot_anomaly_score_traces, plot_temporal_anomaly_distribution, plot_temporal_sharp_changes, compute_and_plot_anomaly_scores
+import argparse
 
 save_dir = Path("./plots/anomaly_score_plots")  # Shared directory for all plots
 os.makedirs(save_dir, exist_ok=True)
@@ -38,19 +39,23 @@ edge_index = edge_index.to(args.device)
 
 # === Step 2: Node2Vec Embedding ===
 G = nx.from_scipy_sparse_array(adj)
-node2vec = Node2Vec(G, dimensions=args.nfeat, walk_length=30, num_walks=200, workers=2)
+node2vec = Node2Vec(G, dimensions=args.nfeat, walk_length=30, num_walks=args.num_walks, workers=args.workers)
 model_n2v = node2vec.fit(window=10, min_count=1)
 embedding_matrix = torch.tensor(
     np.array([model_n2v.wv[str(i)] for i in range(adj.shape[0])])
 ).to(args.device)
 
-# === Step 3: Year-based Temporal Grouping (1-year bins) ===
+# === Step 3: Year-based Temporal Grouping (UI-driven bins) ===
 df_meta = pd.read_csv('./data/final_filtered_by_fos_and_reference.csv')
 df_years = df_meta['year'].values
 min_year, max_year = df_years.min(), df_years.max()
+T = args.Time_stamps  # Use Time_stamps value from config
+num_epochs = args.max_epoch  # Use max_epoch for number of epochs
+
 bins = list(range(min_year, max_year + 2))
-T = len(bins) - 1
 node_time_step = np.digitize(df_years, bins) - 1
+
+
 
 # === Step 4: Simulate temporal slices ===
 node_features_over_time = torch.stack([
@@ -64,8 +69,10 @@ args.num_classes = labels.max().item() + 1
 model = AdiHs(args, time_length=T).to(args.device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
-# === Train on All Time Steps ===
-for epoch in range(100):
+
+
+# === Training Loop ===
+for epoch in range(num_epochs):  # Use epochs value from UI
     model.train()
     optimizer.zero_grad()
     loss_total = 0
@@ -108,21 +115,12 @@ anomaly_labels = clf.predict(X_flat)
 
 
 
-# === Step 11: Histogram of Anomaly Score Distribution Across Time Steps ===
-
-
-
 # === Graphical Analysis ===
 G = nx.from_scipy_sparse_array(adj)
 DG = G.to_directed()
 degrees = np.array([G.degree(i) for i in range(G.number_of_nodes())])
 in_degrees = np.array([DG.in_degree(i) for i in range(G.number_of_nodes())])
 out_degrees = np.array([DG.out_degree(i) for i in range(G.number_of_nodes())])
-
-# Removed duplicate highlight_paper function and replaced with call to visualFunction
-
-
-# Call the function
 
 
 
@@ -231,10 +229,10 @@ def validate_with_noise_injection(
         results.append(result)
     return results
 
-# Example usage after model training:
+# Run validation with noise injection
 validation_results = validate_with_noise_injection(
     G, embedding_matrix, node_features_over_time, edge_index, model, T,
-    n_iters=5, n_noise_nodes=10, connect_prob=0.5
+    n_iters=30, n_noise_nodes=10, connect_prob=0.5
 )
 
 
@@ -286,7 +284,7 @@ for node in range(scores_per_time.shape[0]):
     scores = scores_per_time[node]
     norm_scores = (scores - scores.mean()) / (scores.std() + 1e-8)
 
-    # בדיקה: מאיזה אינדקס הזמן להתחיל
+    
     try:
         start_t = time_years.index(pub_year)
     except ValueError:
@@ -361,3 +359,14 @@ plot_temporal_sharp_changes(scores_per_time, save_dir)
 
 # Removed computation and plotting of anomaly scores and replaced with call to visualFunction
 compute_and_plot_anomaly_scores(att_output, df_meta, save_dir)
+
+"""# Load metadata
+if os.path.exists('./data/final_filtered_by_fos_and_reference.csv'):
+    df_meta = pd.read_csv('./data/final_filtered_by_fos_and_reference.csv')
+    if 'year' in df_meta.columns:
+        df_years = df_meta['year'].values
+        min_year, max_year = df_years.min(), df_years.max()
+    else:
+        raise ValueError("Year column not found in metadata.")
+else:
+    raise FileNotFoundError("Metadata file not found.")"""

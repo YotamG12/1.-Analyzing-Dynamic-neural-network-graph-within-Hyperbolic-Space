@@ -19,18 +19,20 @@ X = vectorizer.fit_transform(df['abstract']).toarray()
 labels = df['fos.name'].str.replace(" ", "_")
 
 # Write dblpv13.content
-with open("dblpv13.content", "w", encoding="utf-8") as f:
+content_path = "C:/AdiHS Project/data/dblpv13.content"
+with open(content_path, "w", encoding="utf-8") as f:
     for pid, row, label in zip(df['id'], X, labels):
         features_str = " ".join(map(str, row))
         f.write(f"{pid} {features_str} {label}\n")
 
-print("✅ Created: dblpv13.content")
+print(f"✅ Created: {content_path}")
 
 # Build set of valid paper IDs
 paper_id_set = set(df['id'])
 
 # Extract references
-with open("dblpv13.cites", "w", encoding="utf-8") as f:
+cites_path = "C:/AdiHS Project/data/dblpv13.cites"
+with open(cites_path, "w", encoding="utf-8") as f:
     for idx, row in df.iterrows():
         try:
             refs = ast.literal_eval(row['references'])
@@ -40,4 +42,4 @@ with open("dblpv13.cites", "w", encoding="utf-8") as f:
         except:
             continue
 
-print("✅ Created: dblpv13.cites")
+print(f"✅ Created: {cites_path}")

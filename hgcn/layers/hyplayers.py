@@ -345,7 +345,10 @@ class TemporalAttentionLayer(nn.Module):
         v = torch.tensordot(temporal_inputs, self.V_embedding_weights, dims=([2],[0])) # [N, T, F]
 
         # 3: Split, concat and scale.
-        split_size = int(q.shape[-1]/self.n_heads)  # 每个head的维度
+        # Ensure split_size is valid
+        if self.n_heads > q.shape[-1]:
+            raise ValueError(f"Number of heads ({self.n_heads}) exceeds tensor dimension ({q.shape[-1]}).")
+        split_size = max(1, int(q.shape[-1]/self.n_heads))  # Ensure split_size is at least 1
         q_ = torch.cat(torch.split(q, split_size_or_sections=split_size, dim=2), dim=0) # [hN, T, F/h]
         k_ = torch.cat(torch.split(k, split_size_or_sections=split_size, dim=2), dim=0) # [hN, T, F/h]
         v_ = torch.cat(torch.split(v, split_size_or_sections=split_size, dim=2), dim=0) # [hN, T, F/h]
