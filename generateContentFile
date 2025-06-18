@@ -1,0 +1,43 @@
+import pandas as pd
+import ast
+from sklearn.feature_extraction.text import CountVectorizer
+import os
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+# Load dataset
+df = pd.read_csv("C:/AdiHS Project/data/final_filtered_by_fos_and_reference.csv")
+
+# Fill NaNs
+df['abstract'] = df['abstract'].fillna("")
+df['fos.name'] = df['fos.name'].fillna("Unknown")
+
+# Build Bag-of-Words features from abstracts
+vectorizer = CountVectorizer()
+X = vectorizer.fit_transform(df['abstract']).toarray()
+
+# Normalize labels (e.g., "Computer science" -> "Computer_science")
+labels = df['fos.name'].str.replace(" ", "_")
+
+# Write dblpv13.content
+with open("dblpv13.content", "w", encoding="utf-8") as f:
+    for pid, row, label in zip(df['id'], X, labels):
+        features_str = " ".join(map(str, row))
+        f.write(f"{pid} {features_str} {label}\n")
+
+print("✅ Created: dblpv13.content")
+
+# Build set of valid paper IDs
+paper_id_set = set(df['id'])
+
+# Extract references
+with open("dblpv13.cites", "w", encoding="utf-8") as f:
+    for idx, row in df.iterrows():
+        try:
+            refs = ast.literal_eval(row['references'])
+            for ref in refs:
+                if ref in paper_id_set:
+                    f.write(f"{row['id']} {ref}\n")
+        except:
+            continue
+
+print("✅ Created: dblpv13.cites")
