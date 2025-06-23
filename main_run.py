@@ -18,7 +18,7 @@ from node2vec import Node2Vec
 from pathlib import Path
 from tabulate import tabulate
 from matplotlib.table import Table
-from visualFunction import print_top_bottom_anomalous_papers, highlight_paper, plot_anomaly_score_traces, plot_temporal_anomaly_distribution, plot_temporal_sharp_changes, compute_and_plot_anomaly_scores
+from visualFunction import print_top_bottom_anomalous_papers, highlight_paper, plot_anomaly_score_traces, plot_temporal_anomaly_distribution, plot_temporal_sharp_changes, compute_and_plot_anomaly_scores, get_top5_anomalies_with_delta,  plot_top5_highest_delta_changes, plot_top5_trace_highest_delta_per_timestep, plot_temporal_sharp_anomaly_changes, plot_as_std_histogram,  plot_top10_std_delta_traces
 import argparse
 
 save_dir = Path("./plots/anomaly_score_plots")  # Shared directory for all plots
@@ -356,9 +356,22 @@ save_table_as_png_safe(falling_stars, fs_path, "Final Falling Stars")
 highlight_paper('53e9b5e0b7602d9704131ef1', df_meta, anomaly_scores, in_degrees, out_degrees, save_dir)
 plot_temporal_anomaly_distribution(att_output, save_dir)
 plot_temporal_sharp_changes(scores_per_time, save_dir)
+plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir)
 
 # Removed computation and plotting of anomaly scores and replaced with call to visualFunction
 compute_and_plot_anomaly_scores(att_output, df_meta, save_dir)
+
+# Compute top 5 anomalies with sharp delta anomaly scores
+scores_per_time = np.stack(scores_per_time, axis=1)  # Ensure scores_per_time is stacked
+
+top5_anomalies = get_top5_anomalies_with_delta(scores_per_time, df_meta)
+print("\nTop 5 Anomalies with Sharp Delta Anomaly Scores:")
+for anomaly in top5_anomalies:
+    print(f"  • Node {anomaly['Node']} | Paper ID: {anomaly['Paper ID']} | Year: {anomaly['Year']} | Title: {anomaly['Title']} | Delta: {anomaly['Delta']:.4f}")
+
+
+"""plot_top5_highest_delta_changes(scores_per_time, save_dir)
+plot_top5_trace_highest_delta_per_timestep(scores_per_time, save_dir)"""
 
 """# Load metadata
 if os.path.exists('./data/final_filtered_by_fos_and_reference.csv'):
@@ -370,3 +383,9 @@ if os.path.exists('./data/final_filtered_by_fos_and_reference.csv'):
         raise ValueError("Year column not found in metadata.")
 else:
     raise FileNotFoundError("Metadata file not found.")"""
+
+# Call the new plot_as_std_histogram function to generate the histogram of AS standard deviations for all nodes.
+plot_as_std_histogram(scores_per_time, save_dir)
+print("📐 scores_per_time shape:", scores_per_time.shape)
+
+plot_top10_std_delta_traces(scores_per_time, T, save_dir)

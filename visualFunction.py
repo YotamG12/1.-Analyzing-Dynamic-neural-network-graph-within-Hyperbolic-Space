@@ -125,9 +125,39 @@ def plot_temporal_sharp_changes(scores_per_time, save_dir):
     else:
         print("No sharp temporal changes detected in anomaly scores.")
 
+def plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir):
+    """
+    Plots the temporal sharp changes in anomaly scores for the 5 nodes with the largest sharp changes (highest max delta).
+    Each line represents a node, and sharp change points are marked.
+    """
+    as_diff = np.diff(scores_per_time, axis=1)  # shape [N, T-1]
+    mean_diff = as_diff.mean()
+    std_diff = as_diff.std()
+
+    # Compute the maximum sharp change for each node
+    sharpness = np.max(np.abs(as_diff), axis=1)
+    # Get the indices of the top 5 nodes with the largest sharp change
+    top5_nodes = np.argsort(sharpness)[-5:]
+
+    plt.figure(figsize=(12, 7))
+    for node in top5_nodes:
+        plt.plot(range(scores_per_time.shape[1]), scores_per_time[node], label=f'Node {node}')
+        # Mark sharp change points
+        for t in np.where(np.abs(as_diff[node]) > mean_diff + 2 * std_diff)[0]:
+            plt.scatter(t+1, scores_per_time[node, t+1], color='red', s=60, zorder=5)
+    plt.xlabel("Time Step")
+    plt.ylabel("Anomaly Score")
+    plt.title("Temporal Sharp Changes in Anomaly Score (Top 5 Most Extreme Nodes)")
+    plt.legend()
+    plt.grid(True)
+    plot_path = save_dir / "temporal_sharp_anomaly_changes.png"
+    plt.savefig(plot_path)
+    plt.close()
+    print(f"Saved temporal sharp anomaly change plot to: {plot_path}")
+
 def plot_temporal_anomaly_distribution(att_output, save_dir):
     """Plots histogram of anomaly score distribution across time steps."""
-    N, T, F = att_output.shape
+    N, T = att_output.shape[:2]
     for t in range(T):
         time_step_vectors = att_output[:, t, :].detach().cpu().numpy()
         clf_t = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
@@ -226,3 +256,129 @@ def highlight_paper(paper_id, df_meta, anomaly_scores, in_degrees, out_degrees, 
     plot_path_out = save_dir / f"{paper_id}_out_degree.png"
     plt.savefig(plot_path_out)
     plt.close()
+
+def get_top5_anomalies_with_delta(scores_per_time, df_meta):
+    """Returns top 5 anomalies with the sharpest delta in anomaly scores and their deltas."""
+    deltas = np.abs(np.diff(scores_per_time, axis=1))  # Compute deltas across time steps
+    max_deltas = deltas.max(axis=1)  # Maximum delta for each node
+    top5_idx = np.argsort(max_deltas)[-5:]  # Indices of top 5 nodes with sharpest deltas
+
+    top5_anomalies = []
+    for idx in top5_idx:
+        pid = df_meta.loc[idx, 'id'] if 'id' in df_meta.columns else idx
+        title = df_meta.loc[idx, 'title'] if 'title' in df_meta.columns else 'Unknown'
+        year = df_meta.loc[idx, 'year'] if 'year' in df_meta.columns else 'Unknown'
+        delta = max_deltas[idx]
+        top5_anomalies.append({
+            'Node': idx,
+            'Paper ID': pid,
+            'Year': year,
+            'Title': title,
+            'Delta': delta
+        })
+
+    return top5_anomalies
+
+def plot_top5_highest_delta_changes(scores_per_time, save_dir):
+    """Plots a line graph for the top 5 nodes with the highest change in delta anomaly scores."""
+    deltas = np.abs(np.diff(scores_per_time, axis=1))  # Compute deltas across time steps
+    max_deltas = deltas.max(axis=1)  # Maximum delta for each node
+    top5_idx = np.argsort(max_deltas)[-5:]  # Indices of top 5 nodes with highest deltas
+
+    plt.figure(figsize=(10, 6))
+    for idx in top5_idx:
+        plt.plot(range(1, deltas.shape[1] + 1), deltas[idx], label=f"Node {idx}")
+
+    plt.xlabel("Time Steps")
+    plt.ylabel("Delta Change")
+    plt.title("Top 5 Nodes with Highest Change in Delta Anomaly Scores")
+    plt.legend()
+    plt.grid(True)
+
+    # Save the plot
+    plot_path = save_dir / "top5_highest_delta_changes.png"
+    plt.savefig(plot_path)
+    plt.close()
+    print(f"✅ Line graph saved at: {plot_path}")
+
+def plot_top5_trace_highest_delta_per_timestep(scores_per_time, save_dir):
+    """
+    For each time step, find the node with the highest delta anomaly score (change from previous time step),
+    then plot the trace (delta over time) for the top 5 unique nodes that appear most frequently as the highest delta node.
+    X-axis: time steps (range T), Y-axis: delta change in anomaly score.
+    """
+    deltas = np.abs(np.diff(scores_per_time, axis=1))  # shape [N, T-1]
+    T = scores_per_time.shape[1]
+    # For each time step, find the node with the highest delta
+    top_nodes_per_t = np.argmax(deltas, axis=0)  # shape [T-1]
+   
+    node_counts = Counter(top_nodes_per_t)
+    top5_nodes = [node for node, _ in node_counts.most_common(5)]
+
+    plt.figure(figsize=(10, 6))
+    for idx in top5_nodes:
+        # Pad the delta array to align with T time steps (first delta is 0)
+        delta_trace = np.insert(deltas[idx], 0, 0)
+        plt.plot(range(T), delta_trace, label=f"Node {idx}")
+
+    plt.xlabel("Time Steps")
+    plt.ylabel("Delta Change in Anomaly Score")
+    plt.title("Trace of Top 5 Nodes with Highest Delta Anomaly Score per Time Step")
+    plt.legend()
+    plt.grid(True)
+    plot_path = save_dir / "top5_trace_highest_delta_per_timestep.png"
+    plt.savefig(plot_path)
+    plt.close()
+    print(f"✅ Trace plot saved at: {plot_path}")
+
+def plot_as_std_histogram(scores_per_time, save_dir):
+    """
+    Plots a histogram of the standard deviations of anomaly score (AS) vectors over time for all nodes.
+    Each node's std is calculated across time steps.
+    """
+    stds = np.std(scores_per_time, axis=1)  # shape [N]
+    plt.figure(figsize=(10, 6))
+    plt.hist(stds, bins=40, color='skyblue', edgecolor='black', alpha=0.8)
+    plt.xlabel("Standard Deviation of Anomaly Score (AS) Over Time")
+    plt.ylabel("Number of Nodes")
+    plt.title("Histogram of AS Standard Deviations Across Time (All Nodes)")
+    plt.grid(True)
+    plot_path = save_dir / "as_std_histogram.png"
+    plt.savefig(plot_path)
+    plt.close()
+    print(f"Saved AS std histogram to: {plot_path}")
+
+def plot_top10_std_delta_traces(scores_per_time, T, save_dir):
+    """
+    Plots delta anomaly score traces over time for the top 10 nodes with the highest standard deviation.
+    X-axis shows time slices [0, T-1].
+    """
+    scores_per_time = scores_per_time.T  # ensure shape is [N, T]
+
+    stds = np.std(scores_per_time, axis=1)
+    n_nodes = scores_per_time.shape[0]
+    n_top = min(10, n_nodes)  # top 10, or less if fewer nodes
+    top_indices = np.argsort(stds)[-n_top:]
+    
+    deltas = np.diff(scores_per_time, axis=1)  # shape: [N, T-1]
+
+    plt.figure(figsize=(14, 8))
+    for idx in top_indices:
+        delta_trace = deltas[idx]
+        if delta_trace.shape[0] != T - 1:
+            print(f"❌ Mismatch in delta shape for node {idx}: {delta_trace.shape}")
+            continue
+        delta_trace = np.insert(delta_trace, 0, 0)  # pad to length T
+        plt.plot(np.arange(T), delta_trace, label=f'Node {idx}', alpha=0.7)
+
+    plt.xlabel("Time Slice")
+    plt.ylabel("Delta Anomaly Score (AS)")
+    plt.title("Delta AS Traces for Top 10 Nodes with Highest AS Std")
+    plt.xlim(0, T - 1)
+    plt.grid(True)
+    plt.legend()
+    plot_path = save_dir / f"top10_std_delta_traces.png"
+    plt.savefig(plot_path)
+    plt.close()
+    print(f"✅ Saved delta AS traces for top 10 nodes to: {plot_path}")
+

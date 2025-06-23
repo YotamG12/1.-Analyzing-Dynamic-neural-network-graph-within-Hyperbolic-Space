@@ -2,6 +2,40 @@ import tkinter as tk
 from tkinter import messagebox
 import subprocess
 
+class ToolTip:
+    """A class to create a tooltip for a given widget."""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+
+        self.widget.bind("<Enter>", self.show_tooltip)
+        self.widget.bind("<Leave>", self.hide_tooltip)
+
+    def show_tooltip(self, event=None):
+        if self.tooltip_window:
+            return
+        self.tooltip_window = tk.Toplevel(self.widget)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.wm_geometry(f"+{self.widget.winfo_rootx() + 20}+{self.widget.winfo_rooty() + 20}")
+        label = tk.Label(
+            self.tooltip_window,
+            text=self.text,
+            background="white",
+            relief="solid",
+            borderwidth=1,
+            wraplength=300,
+            anchor="w",
+            justify="left"
+        )
+        label.pack()
+
+    def hide_tooltip(self, event=None):
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -28,15 +62,28 @@ class App(tk.Tk):
 
         tk.Label(frame, text="Number of Walks:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
         tk.Entry(frame, textvariable=self.num_walks).grid(row=0, column=1, padx=5, pady=2)
+        walks_help = tk.Label(frame, text="?", font=("Arial", 10, "bold"), fg="blue", cursor="hand2")
+        walks_help.grid(row=0, column=2, padx=5, pady=2)
+        ToolTip(walks_help, text="The number of walks per node. For example, if num_walks=10, then for each node in the graph, 10 random walks will be generated.")
+
 
         tk.Label(frame, text="Number of Workers:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
         tk.Entry(frame, textvariable=self.workers).grid(row=1, column=1, padx=5, pady=2)
+        workers_help = tk.Label(frame, text="?", font=("Arial", 10, "bold"), fg="blue", cursor="hand2")
+        workers_help.grid(row=1, column=2, padx=5, pady=2)
+        ToolTip(workers_help, text="The number of parallel workers to use for generating random walks. More workers can speed up the process, especially for large graphs.")
 
         tk.Label(frame, text="Number of Epochs:").grid(row=2, column=0, sticky="w", padx=5, pady=2)
         tk.Entry(frame, textvariable=self.num_epochs).grid(row=2, column=1, padx=5, pady=2)
+        epochs_help = tk.Label(frame, text="?", font=("Arial", 10, "bold"), fg="blue", cursor="hand2")
+        epochs_help.grid(row=2, column=2, padx=5, pady=2)
+        ToolTip(epochs_help, text="The number of epochs for training the model. More epochs can lead to better performance but also increases training time. Adjust based on your dataset size and model complexity.")
 
         tk.Label(frame, text="Time Slices:").grid(row=3, column=0, sticky="w", padx=5, pady=2)
         tk.Entry(frame, textvariable=self.time_slices).grid(row=3, column=1, padx=5, pady=2)
+        time_slices_help = tk.Label(frame, text="?", font=("Arial", 10, "bold"), fg="blue", cursor="hand2")
+        time_slices_help.grid(row=3, column=2, padx=5, pady=2)
+        ToolTip(time_slices_help, text="The number of time slices for the temporal attention layer. This determines how many discrete time intervals the model will consider when analyzing temporal patterns in the data.")
 
     def _create_buttons_frame(self):
         frame = tk.Frame(self, padx=10, pady=10)
