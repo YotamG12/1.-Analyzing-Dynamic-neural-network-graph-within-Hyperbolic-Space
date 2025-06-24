@@ -8,6 +8,7 @@ import networkx as nx
 from collections import defaultdict
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import LabelBinarizer
+from config import args
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -55,9 +56,17 @@ def parse_refs(refs):
 
 adjacency_list = {row['node_idx']: parse_refs(row['references']) for _, row in df.iterrows()}
 
-# === DYNAMIC SNAPSHOT CONSTRUCTION FROM TRUE REFERENCES ===
-print("📦 Building dynamic snapshots from actual references...")
+# === DYNAMIC SNAPSHOT CONSTRUCTION FROM TIME BINS ===
+print("📦 Building dynamic snapshots from time bins...")
 df = df.dropna(subset=['references', 'year'])
+df['year'] = df['year'].astype(int)
+
+T = args.Time_stamps
+min_year = df['year'].min()
+max_year = df['year'].max()
+bins = np.linspace(min_year, max_year + 1, T + 1, dtype=int)
+df['time_bin'] = pd.cut(df['year'], bins=bins, labels=False, include_lowest=True)
+
 
 def parse_refs_str(refs):
     try:
@@ -66,22 +75,21 @@ def parse_refs_str(refs):
         return []
 
 df['parsed_refs'] = df['references'].apply(parse_refs_str)
-df['year'] = df['year'].astype(int)
 
 snapshots = defaultdict(nx.DiGraph)
 id_to_idx = {pid: idx for idx, pid in enumerate(df['id'])}
 
-for idx, row in df.iterrows():
-    year = row['year']
+for _, row in df.iterrows():
+    t = row['time_bin']
     paper_id = row['id']
     paper_idx = id_to_idx.get(paper_id)
-    if paper_idx is None:
+    if paper_idx is None or pd.isna(t):
         continue
-    snapshots[year].add_node(paper_idx)
+    snapshots[int(t)].add_node(paper_idx)
     for ref_id in row['parsed_refs']:
         ref_idx = id_to_idx.get(ref_id)
         if ref_idx is not None:
-            snapshots[year].add_edge(paper_idx, ref_idx)
+            snapshots[int(t)].add_edge(paper_idx, ref_idx)
 
 # === SPLIT MATRICES ===
 x = features[train_idx]
@@ -102,7 +110,7 @@ save_pickle(tx, "tx")
 save_pickle(ty, "ty")
 save_pickle(allx, "allx")
 save_pickle(ally, "ally")
-save_pickle(adjacency_list, "graph")  # renamed to adjacency_list
+save_pickle(adjacency_list, "graph")
 save_pickle(dict(snapshots), "snapshot_graphs")
 
 # Save test index

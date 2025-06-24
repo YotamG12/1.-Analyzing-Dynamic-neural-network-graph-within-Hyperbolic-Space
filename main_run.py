@@ -21,7 +21,7 @@ from node2vec import Node2Vec
 from pathlib import Path
 from tabulate import tabulate
 from matplotlib.table import Table
-from visualFunction import print_top_bottom_anomalous_papers, highlight_paper, plot_anomaly_score_traces, plot_temporal_anomaly_distribution, plot_temporal_sharp_changes, compute_and_plot_anomaly_scores, get_top5_anomalies_with_delta,  plot_top5_highest_delta_changes, plot_top5_trace_highest_delta_per_timestep, plot_temporal_sharp_anomaly_changes, plot_as_std_histogram,  plot_top10_std_delta_traces, plot_bottom5_lowest_delta_changes,plot_temporal_dull_anomaly_changes,plot_bottom10_std_delta_traces
+from visualFunction import print_top_bottom_anomalous_papers, highlight_paper, plot_anomaly_score_traces, plot_temporal_anomaly_distribution, plot_temporal_sharp_changes, compute_and_plot_anomaly_scores, get_top5_anomalies_with_delta,  plot_top5_highest_delta_changes, plot_top5_trace_highest_delta_per_timestep, plot_temporal_sharp_anomaly_changes, plot_as_std_histogram,  plot_top10_std_delta_traces, plot_bottom5_lowest_delta_changes,plot_temporal_dull_anomaly_changes,plot_bottom10_std_delta_traces, detect_and_plot_sleeping_beauties_by_delta, detect_and_plot_falling_stars_by_delta
 import argparse
 
 save_dir = Path("./plots/anomaly_score_plots")
@@ -207,7 +207,7 @@ validation_results = validate_with_noise_injection(
     T=T,
     idx_val=idx_val,
     labels=labels,
-    n_iters=30,
+    n_iters=args.validation_iteration,
     n_noise_nodes=10,
     connect_prob=0.5
 )
@@ -257,29 +257,6 @@ def compute_degrees(df_meta):
 
     return in_degrees, out_degrees
 
-
-# === Step 11: Visualizations ===
-in_degrees, out_degrees = compute_degrees(df_meta)
-highlight_paper('53e9b5e0b7602d9704131ef1', df_meta, anomaly_scores, in_degrees, out_degrees, save_dir)
-plot_temporal_anomaly_distribution(att_output, save_dir)
-plot_temporal_sharp_changes(scores_per_time, save_dir)
-plot_bottom5_lowest_delta_changes(scores_per_time, save_dir)
-plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir,df_meta)
-plot_temporal_dull_anomaly_changes(scores_per_time, save_dir, df_meta)
-compute_and_plot_anomaly_scores(att_output, df_meta, save_dir)
-
-top5_anomalies = get_top5_anomalies_with_delta(scores_per_time, df_meta)
-for anomaly in top5_anomalies:
-    print(f"Top Anomaly • Node {anomaly['Node']} | Paper ID: {anomaly['Paper ID']} | Year: {anomaly['Year']} | Title: {anomaly['Title']} | Δ: {anomaly['Delta']:.4f}")
-
-plot_as_std_histogram(scores_per_time, save_dir)
-plot_top10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
-plot_bottom10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
-
-
-
-
-
 N, T, F = att_output.shape
 scores_per_time = []
 
@@ -302,106 +279,33 @@ avg_scores = scores_per_time.mean(axis=1)          # [N]
 top5_idx = np.argsort(avg_scores)[-5:]             # indices of top 5 (most anomalous)
 bottom5_idx = np.argsort(avg_scores)[:5]           # indices of bottom 5 (least anomalous)
 
-def save_table_as_png_safe(data, filename, title):
-    df = pd.DataFrame(data)
-    if df.empty:
-        print(f"⚠️ No data to save for '{title}'. Skipping.")
-        return
+# === Step 11: Visualizations ===
+in_degrees, out_degrees = compute_degrees(df_meta)
+highlight_paper('53e9b5e0b7602d9704131ef1', df_meta, anomaly_scores, in_degrees, out_degrees, save_dir)
+plot_temporal_anomaly_distribution(att_output, save_dir)
+plot_temporal_sharp_changes(scores_per_time, save_dir)
+plot_bottom5_lowest_delta_changes(scores_per_time, save_dir)
+plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir,df_meta)
+plot_temporal_dull_anomaly_changes(scores_per_time, save_dir, df_meta)
+compute_and_plot_anomaly_scores(att_output, df_meta, save_dir)
 
-    try:
-        fig, ax = plt.subplots(figsize=(16, 3 + len(df) * 0.7))
-        ax.set_axis_off()
-        tbl = Table(ax, bbox=[0, 0, 1, 1])
-        nrows, ncols = df.shape
-        width, height = 1.0 / ncols, 1.0 / (nrows + 1)
+top5_anomalies = get_top5_anomalies_with_delta(scores_per_time, df_meta)
+for anomaly in top5_anomalies:
+    print(f"Top Anomaly • Node {anomaly['Node']} | Paper ID: {anomaly['Paper ID']} | Year: {anomaly['Year']} | Title: {anomaly['Title']} | Δ: {anomaly['Delta']:.4f}")
 
-        ax.set_title(title, fontsize=20, fontweight="bold", pad=30)
-
-        for i, column in enumerate(df.columns):
-            tbl.add_cell(0, i, width, height, text=column, loc='center', facecolor='lightgrey')
-
-        for row in range(nrows):
-            for col in range(ncols):
-                value = str(df.iat[row, col]) if col < ncols else ""
-                tbl.add_cell(row + 1, col, width, height, text=value, loc='center')
-
-        for cell in tbl.get_celld().values():
-            cell.set_fontsize(12)
-
-        ax.add_table(tbl)
-        plt.savefig(filename, bbox_inches='tight', dpi=200)
-        plt.close()
-        print(f"✅ Saved table: {filename}")
-
-    except Exception as e:
-        print(f"❌ Error saving table to {filename}: {e}")
+plot_as_std_histogram(scores_per_time, save_dir)
+plot_top10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
+plot_bottom10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
+detect_and_plot_sleeping_beauties_by_delta(scores_per_time, df_meta, save_dir)
+detect_and_plot_falling_stars_by_delta(scores_per_time, df_meta, save_dir)
 
 
 
-# === Map time steps to real years ===
-if 'year' in df_meta.columns:
-    sorted_years = sorted(df_meta['year'].dropna().unique())
-    if len(sorted_years) >= T:
-        time_years = sorted_years[:T]
-    else:
-        min_year = sorted_years[0]
-        time_years = [min_year + t for t in range(T)]
-else:
-    time_years = [f"T{t}" for t in range(T)]
 
-# === Parameters ===
-SB_min_sleep = 3       # Minimum dormant period
-SB_rise_thresh = 0.8   # Threshold for awakening
-FS_min_peak = 3        # Minimum active period
-FS_drop_thresh = 0.2   # Threshold for falling
 
-sleeping_beauties = []
-falling_stars = []
 
-for node in range(scores_per_time.shape[0]):
-    pub_year = df_meta.loc[node, 'year']
-    scores = scores_per_time[node]
-    
-    try:
-        start_t = time_years.index(pub_year)
-    except ValueError:
-        continue
 
-    # Detect Sleeping Beauty
-    for t in range(start_t + SB_min_sleep, T - 1):
-        dormant = scores[start_t:t]
-        awakened = scores[t]
-        if np.all(dormant < 0.3) and awakened > SB_rise_thresh:
-            sb_years = f"{time_years[start_t]}–{time_years[t]}"
-            sleeping_beauties.append({
-                'Node': node,
-                'Title': df_meta.loc[node, 'title'],
-                'Year': pub_year,
-                'Sleeping Beauty Years': sb_years
-            })
-            break
 
-    # Detect Falling Star
-    for t in range(start_t + FS_min_peak, T - 1):
-        peak = scores[start_t:t]
-        decline = scores[t]
-        if np.all(peak > 0.7) and decline < FS_drop_thresh:
-            fs_years = f"{time_years[start_t]}–{time_years[t]}"
-            falling_stars.append({
-                'Node': node,
-                'Title': df_meta.loc[node, 'title'],
-                'Year': pub_year,
-                'Falling Star Years': fs_years
-            })
-            break
 
-# === Save only top 5 entries for display ===
-sleeping_beauties = sleeping_beauties[:5]
-falling_stars = falling_stars[:5]
 
-# === Save to tables ===
-sb_path = save_dir / "final_sleeping_beauties_table.png"
-fs_path = save_dir / "final_falling_stars_table.png"
 
-save_table_as_png_safe(sleeping_beauties, sb_path, "Final Sleeping Beauties")
-save_table_as_png_safe(falling_stars, fs_path, "Final Falling Stars")

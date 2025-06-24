@@ -494,3 +494,82 @@ def plot_bottom10_std_delta_traces(scores_per_time, T, save_dir, df_meta):
     print(f"✅ Saved delta AS traces for bottom 10 nodes to: {plot_path}")
 
 
+def detect_and_plot_sleeping_beauties_by_delta(scores_per_time, df_meta, save_dir, window_len=5, delta_thresh=0.4):
+    """
+    Detects and plots top 5 nodes with sharp delta increase (Sleeping Beauties).
+    """
+    N, T = scores_per_time.shape
+    deltas = np.diff(scores_per_time, axis=1)  # [N, T-1]
+    max_deltas = []
+
+    for node in range(N):
+        max_delta = -np.inf
+        for start in range(T - window_len):
+            delta = scores_per_time[node, start + window_len] - scores_per_time[node, start]
+            if delta > max_delta:
+                max_delta = delta
+        max_deltas.append(max_delta)
+
+    top5_nodes = np.argsort(max_deltas)[-5:]
+
+    print("\n🌅 Top 5 Sleeping Beauties by Sharp Rise:")
+    for node in top5_nodes:
+        pid   = df_meta.loc[node, 'id'] if 'id' in df_meta.columns else node
+        title = df_meta.loc[node, 'title'] if 'title' in df_meta.columns else 'Unknown'
+        year  = df_meta.loc[node, 'year'] if 'year' in df_meta.columns else 'Unknown'
+        print(f"  • Node {node} | Δ↑ = {max_deltas[node]:.3f} | ID: {pid} | Year: {year} | Title: {title}")
+
+    plt.figure(figsize=(12, 7))
+    for node in top5_nodes:
+        plt.plot(range(T), scores_per_time[node], label=f'Node {node}')
+    plt.xlabel("Time Slice")
+    plt.ylabel("Anomaly Score")
+    plt.title("Top 5 Sleeping Beauties by Delta Increase")
+    plt.grid(True)
+    plt.legend()
+    plot_path = save_dir / "sleeping_beauties_by_delta.png"
+    plt.savefig(plot_path)
+    plt.close()
+    print(f"✅ Saved SB plot to: {plot_path}")
+
+def detect_and_plot_falling_stars_by_delta(scores_per_time, df_meta, save_dir, window_len=5, delta_thresh=0.4):
+    """
+    Detects and plots top 5 nodes with sharp delta decrease (Falling Stars).
+    """
+    N, T = scores_per_time.shape
+    deltas = np.diff(scores_per_time, axis=1)
+    min_deltas = []
+
+    for node in range(N):
+        min_delta = np.inf
+        for start in range(T - window_len):
+            delta = scores_per_time[node, start + window_len] - scores_per_time[node, start]
+            if delta < min_delta:
+                min_delta = delta
+        min_deltas.append(min_delta)
+
+    top5_nodes = np.argsort(min_deltas)[:5]
+
+    print("\n🌠 Top 5 Falling Stars by Sharp Drop:")
+    for node in top5_nodes:
+        pid   = df_meta.loc[node, 'id'] if 'id' in df_meta.columns else node
+        title = df_meta.loc[node, 'title'] if 'title' in df_meta.columns else 'Unknown'
+        year  = df_meta.loc[node, 'year'] if 'year' in df_meta.columns else 'Unknown'
+        print(f"  • Node {node} | Δ↓ = {min_deltas[node]:.3f} | ID: {pid} | Year: {year} | Title: {title}")
+
+    plt.figure(figsize=(12, 7))
+    for node in top5_nodes:
+        plt.plot(range(T), scores_per_time[node], label=f'Node {node}')
+    plt.xlabel("Time Slice")
+    plt.ylabel("Anomaly Score")
+    plt.title("Top 5 Falling Stars by Delta Decrease")
+    plt.grid(True)
+    plt.legend()
+    plot_path = save_dir / "falling_stars_by_delta.png"
+    plt.savefig(plot_path)
+    plt.close()
+    print(f"✅ Saved FS plot to: {plot_path}")
+
+
+
+

@@ -47,13 +47,31 @@ class App(tk.Tk):
         self.workers = tk.IntVar(value=2)
         self.num_epochs = tk.IntVar(value=100)
         self.time_slices = tk.IntVar(value=61)
+        self.validation_iteration= tk.IntVar(value=30)
 
         # Create UI components
-        
+        self._create_Data_frame()
         self._create_hyperparameters_frame()
-        self._create_buttons_frame()
+        self._create_validation_frame()
         self._create_console_output()
 
+    def _create_Data_frame(self):
+        frame = tk.LabelFrame(self, text="DataFrame", padx=10, pady=10)
+        frame.pack(fill="x", padx=5, pady=5)
+        
+        tk.Label(frame, text="Time Slices:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        tk.Entry(frame, textvariable=self.time_slices).grid(row=0, column=1, padx=5, pady=2)
+        time_slices_help = tk.Label(frame, text="?", font=("Arial", 10, "bold"), fg="blue", cursor="hand2")
+        time_slices_help.grid(row=0, column=2, padx=5, pady=2)
+        ToolTip(time_slices_help, text="The number of time slices...")
+
+        # Button centered across all 3 columns
+        tk.Button(frame, text="Generate Data", command=self.run_generate_data)\
+            .grid(row=1, column=0, columnspan=3, pady=10, sticky="ew")
+
+        # Make sure columns expand equally
+        for i in range(3):
+            frame.grid_columnconfigure(i, weight=1)
 
 
     def _create_hyperparameters_frame(self):
@@ -79,18 +97,25 @@ class App(tk.Tk):
         epochs_help.grid(row=2, column=2, padx=5, pady=2)
         ToolTip(epochs_help, text="The number of epochs for training the model. More epochs can lead to better performance but also increases training time. Adjust based on your dataset size and model complexity.")
 
-        tk.Label(frame, text="Time Slices:").grid(row=3, column=0, sticky="w", padx=5, pady=2)
-        tk.Entry(frame, textvariable=self.time_slices).grid(row=3, column=1, padx=5, pady=2)
-        time_slices_help = tk.Label(frame, text="?", font=("Arial", 10, "bold"), fg="blue", cursor="hand2")
-        time_slices_help.grid(row=3, column=2, padx=5, pady=2)
-        ToolTip(time_slices_help, text="The number of time slices for the temporal attention layer. This determines how many discrete time intervals the model will consider when analyzing temporal patterns in the data.")
+        # Centered button
+        tk.Button(frame, text="Run Main", command=self.run_main)\
+            .grid(row=3, column=0, columnspan=3, pady=10, sticky="ew")
 
-    def _create_buttons_frame(self):
-        frame = tk.Frame(self, padx=10, pady=10)
+        for i in range(3):
+          frame.grid_columnconfigure(i, weight=1)
+
+
+  
+
+    def _create_validation_frame(self):
+        frame = tk.LabelFrame(self, text="validation", padx=10, pady=10)
         frame.pack(fill="x", padx=5, pady=5)
 
-        tk.Button(frame, text="Generate Data", command=self.run_generate_data).pack(side="left", padx=5, pady=2)
-        tk.Button(frame, text="Run Main", command=self.run_main).pack(side="left", padx=5, pady=2)
+        tk.Label(frame, text="Number of iteration:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        tk.Entry(frame, textvariable=self.validation_iteration).grid(row=0, column=1, padx=5, pady=2)
+        validation_iteration = tk.Label(frame, text="?", font=("Arial", 10, "bold"), fg="blue", cursor="hand2")
+        validation_iteration.grid(row=0, column=2, padx=5, pady=2)
+        ToolTip(validation_iteration, text="The number of iteration to insert random edges ('noises') to tje original graph.")
 
     def _create_console_output(self):
         frame = tk.LabelFrame(self, text="Console Output", padx=10, pady=10)
@@ -101,7 +126,7 @@ class App(tk.Tk):
 
     def run_generate_data(self):
         try:
-            subprocess.run(["python", "generateData.py", str(self.num_walks.get()), str(self.workers.get())], check=True)
+            subprocess.run(["python", "generateData.py","--Time_stamps", str(self.time_slices.get()) ], check=True)
             subprocess.run(["python", "generateContentFile"], check=True)  # Corrected filename
             self._log_to_console("✅ Data generation completed.")
         except subprocess.CalledProcessError as e:
@@ -112,7 +137,10 @@ class App(tk.Tk):
             subprocess.run([
                 "python", "main_run.py",
                 "--max_epoch", str(self.num_epochs.get()),
-                "--Time_stamps", str(self.time_slices.get())
+                "--num_walks", str(self.num_walks.get()), 
+                "--workers",str(self.workers.get()),
+                "--Time_stamps", str(self.time_slices.get()),
+                "--validation_iteration",str(self.validation_iteration.get())
             ], check=True)
             self._log_to_console("✅you can see the plots in the folder 'plots' in the pyton IDE.")
         except subprocess.CalledProcessError as e:

@@ -26,6 +26,7 @@ parser.add_argument('--curvature', type=float, default=1.0, help='curvature valu
 parser.add_argument('--num_walks', type=int, default=200, help='Number of walks for Node2Vec')
 parser.add_argument('--workers', type=int, default=2, help='Number of workers for Node2Vec')
 parser.add_argument('--Time_stamps', type=int, default=None, help='Time_stamps')
+parser.add_argument('--validation_iteration', type=int, default=None, help='Time_stamps')
 args = parser.parse_args()
 
 
