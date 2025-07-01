@@ -21,8 +21,9 @@ from node2vec import Node2Vec
 from pathlib import Path
 from tabulate import tabulate
 from matplotlib.table import Table
-from visualFunction import print_top_bottom_anomalous_papers, highlight_paper, plot_anomaly_score_traces, plot_temporal_anomaly_distribution, plot_temporal_sharp_changes, compute_and_plot_anomaly_scores, get_top5_anomalies_with_delta,  plot_top5_highest_delta_changes, plot_top5_trace_highest_delta_per_timestep, plot_temporal_sharp_anomaly_changes, plot_as_std_histogram,  plot_top10_std_delta_traces, plot_bottom5_lowest_delta_changes,plot_temporal_dull_anomaly_changes,plot_bottom10_std_delta_traces, detect_and_plot_sleeping_beauties_by_delta, detect_and_plot_falling_stars_by_delta
+from visualFunction import print_top_bottom_anomalous_papers, highlight_paper, plot_anomaly_score_traces, plot_temporal_anomaly_distribution, plot_temporal_sharp_changes, compute_and_plot_anomaly_scores, get_top5_anomalies_with_delta,  plot_top5_highest_delta_changes, plot_top5_trace_highest_delta_per_timestep, plot_temporal_sharp_anomaly_changes, plot_as_std_histogram,  plot_top10_std_delta_traces, plot_bottom5_lowest_delta_changes,plot_temporal_dull_anomaly_changes,plot_moving_window_histograms_with_top_nodes,plot_absolute_sharp_changes
 import argparse
+from collections import defaultdict
 
 save_dir = Path("./plots/anomaly_score_plots")
 os.makedirs(save_dir, exist_ok=True)
@@ -67,22 +68,102 @@ args.num_classes = labels.max().item() + 1
 model = AdiHs(args, time_length=T).to(args.device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
-# === Training Loop ===
+# === Training Loop with Overfitting Tracking ===
+train_losses = []
+val_accuracies = []
+#epoch_anomaly_stats = []  # stores per-epoch stats for export
+#node_anomaly_std_log = defaultdict(dict)  # {node_id: {epoch: std_val}}
+
+# Fix labels shape if needed
+# Make sure labels are class indices, not one-hot
+# Ensure labels are a tensor
+if not isinstance(labels, torch.Tensor):
+    labels = torch.tensor(labels)
+
+# Ensure labels are on the same device
+labels = labels.to(args.device)
+
+# Convert from one-hot to class indices if needed
+if labels.ndim == 2 and labels.shape[1] > 1:
+    labels = labels.argmax(dim=1)
+
+
+
+
+
 for epoch in range(args.max_epoch):
     model.train()
     optimizer.zero_grad()
-    loss_total = 0
+
+    # === Step 1: Forward pass through all time steps ===
+    temporal_outputs = []
     for t in range(T):
         x_t = embedding_matrix[:, t, :].to(args.device)
-        logits_t = model(edge_index, x=x_t)
-        loss_t = F.cross_entropy(logits_t[idx_train], labels[idx_train])
-        loss_total += loss_t
-    loss_total = loss_total / T
+        h_t = model(edge_index, x=x_t)
+        temporal_outputs.append(h_t)
+
+    # === Step 2: Stack and apply attention ===
+    X = torch.stack(temporal_outputs, dim=1)  # [N, T, F]
+    out = model.ddy_attention_layer(X)        # [N, F]
+    out = out[:, -1, :]
+
+    # === Step 3: Compute loss using attention output ===
+    
+
+    loss_total = F.cross_entropy(out[idx_train], labels[idx_train])
     loss_total.backward()
     optimizer.step()
 
+    # === Step 4: Validation ===
+    model.eval()
+    with torch.no_grad():
+        # Recompute X with model in eval mode
+        temporal_outputs = []
+        for t in range(T):
+            x_t = embedding_matrix[:, t, :].to(args.device)
+            h_t = model(edge_index, x=x_t)
+            temporal_outputs.append(h_t)
+
+        X_val = torch.stack(temporal_outputs, dim=1)
+        att_output = model.ddy_attention_layer(X_val)
+        att_output_fix = att_output[:, -1, :]
+        # === Step: Record per-node average anomaly score std over time ===
+    """ att_output_np = att_output.detach().cpu().numpy()  # [N, T, F]
+        node_std_vals = np.std(att_output_np, axis=1)      # [N], std over time for each node
+
+        paper_ids = df_meta['id'].values if 'id' in df_meta.columns else np.arange(len(node_std_vals))
+
+        for node_id, paper_id, std_val in zip(range(len(node_std_vals)), paper_ids, node_std_vals):
+            node_anomaly_std_log[node_id]['paper_id'] = paper_id
+            node_anomaly_std_log[node_id][f'epoch {epoch} average anomaly score std'] = std_val
+
+
+        records = []
+        for node_id, stats in node_anomaly_std_log.items():
+            row = {'node_id': node_id, 'paper_id': stats.pop('paper_id')}
+            row.update(stats)
+            records.append(row)
+
+        df_anomaly_wide = pd.DataFrame(records)
+        df_anomaly_wide = df_anomaly_wide.sort_values(by='node_id')
+        df_anomaly_wide.to_csv("node_anomaly_std_per_epoch.csv", index=False)
+        print("✅ Saved wide-format anomaly std CSV to: node_anomaly_std_per_epoch.csv")"""
+        if len(idx_val) > 0 and att_output_fix.shape[0] > np.max(idx_val):
+            val_pred = att_output_fix[idx_val].max(1)[1]
+            acc_val = (val_pred == labels[idx_val]).float().mean().item()
+        else:
+            acc_val = float('nan')
+
+    # === Step 5: Logging ===
+    train_losses.append(loss_total.item())
+    val_accuracies.append(acc_val)
+    print(f"[Epoch {epoch}] Train Loss: {loss_total.item():.4f} | Val Accuracy: {acc_val:.4f}")
+"""df_epoch_stats = pd.DataFrame(epoch_anomaly_stats)
+df_epoch_stats.to_csv("epoch_node_anomaly_std.csv", index=False)
+print("✅ Saved node-wise anomaly std per epoch to: epoch_node_anomaly_std.csv")"""
+
 # === Step 4: Apply Attention Layer ===
-model.eval()
+"""model.eval()
 temporal_outputs = []
 with torch.no_grad():
     for t in range(T):
@@ -90,7 +171,21 @@ with torch.no_grad():
         h_t = model(edge_index, x=x_t)
         temporal_outputs.append(h_t)
 X = torch.stack(temporal_outputs, dim=1)
-att_output = model.ddy_attention_layer(X)  # [N, T, F]
+att_output = model.ddy_attention_layer(X)  # [N, T, F]"""
+
+# === Overfitting Diagnostic Plot ===
+plt.figure(figsize=(10, 5))
+plt.plot(train_losses, label='Train Loss', linewidth=2)
+plt.plot(val_accuracies, label='Validation Accuracy', linewidth=2)
+plt.xlabel("Epoch")
+plt.ylabel("Value")
+plt.title("Train Loss vs Validation Accuracy")
+plt.legend()
+plt.grid(True)
+plot_path = save_dir / "loss_vs_val_acc.png"
+plt.savefig(plot_path)
+plt.close()
+print(f"\n✅ Saved overfitting plot to: {plot_path}")
 
 # === Step 5: MinMax Normalize and Detect Anomalies ===
 X_flat = att_output.reshape(X.shape[0], -1).detach().cpu().numpy()
@@ -280,24 +375,34 @@ top5_idx = np.argsort(avg_scores)[-5:]             # indices of top 5 (most anom
 bottom5_idx = np.argsort(avg_scores)[:5]           # indices of bottom 5 (least anomalous)
 
 # === Step 11: Visualizations ===
-in_degrees, out_degrees = compute_degrees(df_meta)
-highlight_paper('53e9b5e0b7602d9704131ef1', df_meta, anomaly_scores, in_degrees, out_degrees, save_dir)
+"""in_degrees, out_degrees = compute_degrees(df_meta)
+highlight_paper('53e9b5e0b7602d9704131ef1', df_meta, anomaly_scores, in_degrees, out_degrees, save_dir)"""
 plot_temporal_anomaly_distribution(att_output, save_dir)
-plot_temporal_sharp_changes(scores_per_time, save_dir)
-plot_bottom5_lowest_delta_changes(scores_per_time, save_dir)
+#plot_temporal_sharp_changes(scores_per_time, save_dir)
+#plot_bottom5_lowest_delta_changes(scores_per_time, save_dir)
 plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir,df_meta)
-plot_temporal_dull_anomaly_changes(scores_per_time, save_dir, df_meta)
-compute_and_plot_anomaly_scores(att_output, df_meta, save_dir)
+#plot_temporal_dull_anomaly_changes(scores_per_time, save_dir, df_meta)
+#compute_and_plot_anomaly_scores(att_output, df_meta, save_dir)
 
 top5_anomalies = get_top5_anomalies_with_delta(scores_per_time, df_meta)
 for anomaly in top5_anomalies:
     print(f"Top Anomaly • Node {anomaly['Node']} | Paper ID: {anomaly['Paper ID']} | Year: {anomaly['Year']} | Title: {anomaly['Title']} | Δ: {anomaly['Delta']:.4f}")
 
 plot_as_std_histogram(scores_per_time, save_dir)
-plot_top10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
-plot_bottom10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
-detect_and_plot_sleeping_beauties_by_delta(scores_per_time, df_meta, save_dir)
-detect_and_plot_falling_stars_by_delta(scores_per_time, df_meta, save_dir)
+#plot_top10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
+#plot_bottom10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
+#detect_and_plot_sleeping_beauties_by_delta(scores_per_time, df_meta, save_dir)
+#detect_and_plot_falling_stars_by_delta(scores_per_time, df_meta, save_dir)
+plot_moving_window_histograms_with_top_nodes(
+    att_output,  # shape [N, T]
+    window_size=10,
+    step_size=5,
+    save_dir=Path("plots/moving_histograms")
+)
+plot_absolute_sharp_changes(scores_per_time, save_dir=Path("plots"), df_meta=df_meta)
+
+
+
 
 
 

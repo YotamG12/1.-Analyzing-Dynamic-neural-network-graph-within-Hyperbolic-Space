@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 import numpy as np
 from collections import Counter
+import os
 
 def compute_and_plot_anomaly_scores(att_output, df_meta, save_dir):
     """Computes per-time-step anomaly scores and plots top/bottom anomalous papers."""
@@ -454,122 +455,99 @@ def plot_top10_std_delta_traces(scores_per_time, T, save_dir, df_meta):
     plt.close()
     print(f"✅ Saved delta AS traces for top 10 nodes to: {plot_path}")
 
-def plot_bottom10_std_delta_traces(scores_per_time, T, save_dir, df_meta):
+
+
+def plot_moving_window_histograms_with_top_nodes(att_output, window_size, step_size, save_dir):
     """
-    Plots delta anomaly score traces over time for the bottom 10 nodes with the lowest anomaly score standard deviation.
-    Prints metadata for each node as well.
+    For each time window:
+    - Histogram: plot mean anomaly score per node (not flattened!)
+    - Line plot: top-10 nodes with highest Δ anomaly score std in the window
     """
-    stds = np.std(scores_per_time, axis=1)
-    n_nodes = scores_per_time.shape[0]
-    n_bottom = min(10, n_nodes)
-    bottom_indices = np.argsort(stds)[:n_bottom]  # lowest stds
+    N, T = att_output.shape[:2]
+    os.makedirs(save_dir, exist_ok=True)
 
-    deltas = np.diff(scores_per_time, axis=1)
+    att_output_np = att_output.detach().cpu().numpy()
+    window_idx = 0
 
-    print("\n📉 Bottom 10 Nodes with Lowest Anomaly Std (Most Stable):")
-    for idx in bottom_indices:
-        pid   = df_meta.loc[idx, 'id'] if 'id' in df_meta.columns else idx
-        title = df_meta.loc[idx, 'title'] if 'title' in df_meta.columns else 'Unknown'
-        year  = df_meta.loc[idx, 'year'] if 'year' in df_meta.columns else 'Unknown'
-        print(f"  • Node {idx} | Paper ID: {pid} | Year: {year} | Title: {title}")
+    for start in range(0, T - window_size + 1, step_size):
+        end = start + window_size
 
-    plt.figure(figsize=(14, 8))
-    for idx in bottom_indices:
-        delta_trace = deltas[idx]
-        if delta_trace.shape[0] != T - 1:
-            print(f"❌ Mismatch in delta shape for node {idx}: {delta_trace.shape}")
-            continue
-        delta_trace = np.insert(delta_trace, 0, 0)  # pad for alignment
-        plt.plot(np.arange(T), delta_trace, label=f'Node {idx}', alpha=0.7)
+        # === Step 1: Compute anomaly scores across the window ===
+        anomaly_scores_window = []
+        for t in range(start, end):
+            x_t = att_output_np[:, t, :]  # [N, F]
+            clf = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
+            clf.fit(x_t)
+            scores = -clf.decision_function(x_t)  # [N]
+            anomaly_scores_window.append(scores)
+        anomaly_scores_window = np.stack(anomaly_scores_window, axis=1)  # [N, window_size]
 
-    plt.xlabel("Time Slice")
-    plt.ylabel("Delta Anomaly Score (AS)")
-    plt.title("Delta AS Traces for Bottom 10 Nodes with Lowest AS Std")
-    plt.xlim(0, T - 1)
-    plt.grid(True)
-    plt.legend()
-    plot_path = save_dir / "bottom10_std_delta_traces.png"
-    plt.savefig(plot_path)
-    plt.close()
-    print(f"✅ Saved delta AS traces for bottom 10 nodes to: {plot_path}")
+        # === Step 2: Use mean score per node for histogram ===
+        mean_scores_per_node = anomaly_scores_window.mean(axis=1)  # [N]
 
+        # === Step 3: Compute Δ anomaly score and top-10 volatile nodes ===
+        deltas = np.diff(anomaly_scores_window, axis=1)  # [N, window_size - 1]
+        delta_stds = np.std(deltas, axis=1)              # [N]
+        top10_indices = np.argsort(delta_stds)[-10:]
 
-def detect_and_plot_sleeping_beauties_by_delta(scores_per_time, df_meta, save_dir, window_len=5, delta_thresh=0.4):
+        # === Step 4: Plot ===
+        plt.figure(figsize=(14, 6))
+
+        # Histogram
+        plt.subplot(1, 2, 1)
+        plt.hist(mean_scores_per_node, bins=50, alpha=0.75, edgecolor='black')
+        plt.title(f"Mean Anomaly Score Distribution [Time {start}–{end}]")
+        plt.xlabel("Mean Anomaly Score (per node)")
+        plt.ylabel("Number of Nodes")
+        plt.grid(True)
+
+        # Line plot of ΔAS
+        plt.subplot(1, 2, 2)
+        for idx in top10_indices:
+            plt.plot(range(start + 1, end), deltas[idx], label=f'Node {idx}', alpha=0.85)
+        plt.title(f"Top 10 Nodes by ΔAS Std | Time {start}–{end}")
+        plt.xlabel("Time Step")
+        plt.ylabel("Δ Anomaly Score")
+        plt.grid(True)
+        plt.legend(fontsize=8)
+
+        # Save
+        save_path = save_dir / f"combined_window_{window_idx}_t{start}_t{end}.png"
+        plt.tight_layout()
+        plt.savefig(save_path)
+        plt.close()
+        print(f"✅ Saved plot for window {window_idx} (t={start}–{end}) to: {save_path}")
+
+        window_idx += 1
+
+def plot_absolute_sharp_changes(scores_per_time, save_dir, df_meta):
     """
-    Detects and plots top 5 nodes with sharp delta increase (Sleeping Beauties).
+    Plots the absolute delta anomaly scores (|ΔAS|) over time for the top 5 nodes with the sharpest changes.
     """
-    N, T = scores_per_time.shape
-    deltas = np.diff(scores_per_time, axis=1)  # [N, T-1]
-    max_deltas = []
+    as_diff = np.diff(scores_per_time, axis=1)  # shape [N, T-1]
+    sharpness = np.max(np.abs(as_diff), axis=1)
+    top5_nodes = np.argsort(sharpness)[-5:]
 
-    for node in range(N):
-        max_delta = -np.inf
-        for start in range(T - window_len):
-            delta = scores_per_time[node, start + window_len] - scores_per_time[node, start]
-            if delta > max_delta:
-                max_delta = delta
-        max_deltas.append(max_delta)
-
-    top5_nodes = np.argsort(max_deltas)[-5:]
-
-    print("\n🌅 Top 5 Sleeping Beauties by Sharp Rise:")
+    print("\n📈 Top 5 Nodes with Largest Absolute Anomaly Changes:")
     for node in top5_nodes:
         pid   = df_meta.loc[node, 'id'] if 'id' in df_meta.columns else node
         title = df_meta.loc[node, 'title'] if 'title' in df_meta.columns else 'Unknown'
         year  = df_meta.loc[node, 'year'] if 'year' in df_meta.columns else 'Unknown'
-        print(f"  • Node {node} | Δ↑ = {max_deltas[node]:.3f} | ID: {pid} | Year: {year} | Title: {title}")
+        print(f"  • Node {node} | Paper ID: {pid} | Year: {year} | Title: {title}")
 
     plt.figure(figsize=(12, 7))
     for node in top5_nodes:
-        plt.plot(range(T), scores_per_time[node], label=f'Node {node}')
-    plt.xlabel("Time Slice")
-    plt.ylabel("Anomaly Score")
-    plt.title("Top 5 Sleeping Beauties by Delta Increase")
-    plt.grid(True)
+        delta_trace = np.abs(as_diff[node])  # shape [T-1]
+        plt.plot(range(1, scores_per_time.shape[1]), delta_trace, label=f'Node {node}', linewidth=2)
+
+    plt.xlabel("Time Step")
+    plt.ylabel("|Δ Anomaly Score|")
+    plt.title("Absolute Changes in Anomaly Score for Top 5 Sharp Nodes")
     plt.legend()
-    plot_path = save_dir / "sleeping_beauties_by_delta.png"
+    plt.grid(True)
+    plot_path = save_dir / "absolute_sharp_anomaly_changes.png"
     plt.savefig(plot_path)
     plt.close()
-    print(f"✅ Saved SB plot to: {plot_path}")
-
-def detect_and_plot_falling_stars_by_delta(scores_per_time, df_meta, save_dir, window_len=5, delta_thresh=0.4):
-    """
-    Detects and plots top 5 nodes with sharp delta decrease (Falling Stars).
-    """
-    N, T = scores_per_time.shape
-    deltas = np.diff(scores_per_time, axis=1)
-    min_deltas = []
-
-    for node in range(N):
-        min_delta = np.inf
-        for start in range(T - window_len):
-            delta = scores_per_time[node, start + window_len] - scores_per_time[node, start]
-            if delta < min_delta:
-                min_delta = delta
-        min_deltas.append(min_delta)
-
-    top5_nodes = np.argsort(min_deltas)[:5]
-
-    print("\n🌠 Top 5 Falling Stars by Sharp Drop:")
-    for node in top5_nodes:
-        pid   = df_meta.loc[node, 'id'] if 'id' in df_meta.columns else node
-        title = df_meta.loc[node, 'title'] if 'title' in df_meta.columns else 'Unknown'
-        year  = df_meta.loc[node, 'year'] if 'year' in df_meta.columns else 'Unknown'
-        print(f"  • Node {node} | Δ↓ = {min_deltas[node]:.3f} | ID: {pid} | Year: {year} | Title: {title}")
-
-    plt.figure(figsize=(12, 7))
-    for node in top5_nodes:
-        plt.plot(range(T), scores_per_time[node], label=f'Node {node}')
-    plt.xlabel("Time Slice")
-    plt.ylabel("Anomaly Score")
-    plt.title("Top 5 Falling Stars by Delta Decrease")
-    plt.grid(True)
-    plt.legend()
-    plot_path = save_dir / "falling_stars_by_delta.png"
-    plt.savefig(plot_path)
-    plt.close()
-    print(f"✅ Saved FS plot to: {plot_path}")
-
-
+    print(f"✅ Saved absolute sharp anomaly change plot to: {plot_path}")
 
 

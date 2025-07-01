@@ -1,7 +1,7 @@
 from data_utilis import load_citation_data
 import os
 
-data_path = os.path.abspath("./data/Cora/raw")
+data_path = os.path.abspath("./data/generate_custom_output/ind.dblpv13.snapshot_graphs'")
 adj, features, labels, idx_train, idx_val, idx_test = load_citation_data(
     "cora", use_feats=True, data_path=data_path
 )
