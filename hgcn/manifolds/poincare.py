@@ -7,21 +7,29 @@ from hgcn.utils.math_utils import artanh, tanh
 
 class PoincareBall(Manifold):
     """
-    PoicareBall Manifold class.
-
-    We use the following convention: x0^2 + x1^2 + ... + xd^2 < 1 / c
-
-    Note that 1/sqrt(c) is the Poincare ball radius.
-
+    PoincareBall manifold class for hyperbolic geometry operations.
+    Implements all required methods for GNNs in hyperbolic space.
     """
 
     def __init__(self, ):
+        """
+        Initialize PoincareBall manifold parameters.
+        """
         super(PoincareBall, self).__init__()
         self.name = 'PoincareBall'
         self.min_norm = 1e-15
         self.eps = {torch.float32: 4e-3, torch.float64: 1e-5}
 
     def sqdist(self, p1, p2, c):
+        """
+        Compute squared distance between two points on the Poincare ball.
+
+        Args:
+            p1, p2 (torch.Tensor): Points on the manifold.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Squared distance.
+        """
         sqrt_c = c ** 0.5
         dist_c = artanh(
             sqrt_c * self.mobius_add(-p1, p2, c, dim=-1).norm(dim=-1, p=2, keepdim=False)
@@ -30,6 +38,16 @@ class PoincareBall(Manifold):
         return dist ** 2
 
     def dist0(self, p1, c, keepdim=False):
+        """
+        Compute distance from the origin to a point on the Poincare ball.
+
+        Args:
+            p1 (torch.Tensor): Point on the manifold.
+            c (float): Curvature parameter.
+            keepdim (bool): Whether to keep dimensions.
+        Returns:
+            torch.Tensor: Distance value.
+        """
         sqrt_c = c ** 0.5
         dist_c = artanh(
             sqrt_c * p1.norm(dim=-1, p=2, keepdim=keepdim)
@@ -38,15 +56,43 @@ class PoincareBall(Manifold):
         return dist
 
     def _lambda_x(self, x, c):
+        """
+        Compute the conformal factor lambda_x for point x.
+
+        Args:
+            x (torch.Tensor): Point on the manifold.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Lambda value.
+        """
         x_sqnorm = torch.sum(x.data.pow(2), dim=-1, keepdim=True)
         return 2 / (1. - c * x_sqnorm).clamp_min(self.min_norm)
 
     def egrad2rgrad(self, p, dp, c):
+        """
+        Convert Euclidean gradient to Riemannian gradient at point p.
+
+        Args:
+            p (torch.Tensor): Point on the manifold.
+            dp (torch.Tensor): Euclidean gradient.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Riemannian gradient.
+        """
         lambda_p = self._lambda_x(p, c)
         dp /= lambda_p.pow(2)
         return dp
 
     def proj(self, x, c):
+        """
+        Project point x onto the Poincare ball manifold.
+
+        Args:
+            x (torch.Tensor): Point to project.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Projected point.
+        """
         norm = torch.clamp_min(x.norm(dim=-1, keepdim=True, p=2), self.min_norm)
         maxnorm = (1 - self.eps[x.dtype]) / (c ** 0.5)
         cond = norm > maxnorm
@@ -54,12 +100,41 @@ class PoincareBall(Manifold):
         return torch.where(cond, projected, x)
 
     def proj_tan(self, u, p, c):
+        """
+        Project vector u onto the tangent space at point p.
+
+        Args:
+            u (torch.Tensor): Vector to project.
+            p (torch.Tensor): Point on the manifold.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Projected vector.
+        """
         return u
 
     def proj_tan0(self, u, c):
+        """
+        Project vector u onto the tangent space at the origin.
+
+        Args:
+            u (torch.Tensor): Vector to project.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Projected vector.
+        """
         return u
 
     def expmap(self, u, p, c):
+        """
+        Exponential map of vector u at point p on the Poincare ball.
+
+        Args:
+            u (torch.Tensor): Vector in tangent space.
+            p (torch.Tensor): Point on the manifold.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Point on the manifold.
+        """
         sqrt_c = c ** 0.5
         u_norm = u.norm(dim=-1, p=2, keepdim=True).clamp_min(self.min_norm)
         second_term = (
@@ -71,6 +146,15 @@ class PoincareBall(Manifold):
         return gamma_1
 
     def logmap(self, p1, p2, c):
+        """
+        Logarithmic map of point p2 at point p1 on the Poincare ball.
+
+        Args:
+            p1, p2 (torch.Tensor): Points on the manifold.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Vector in tangent space.
+        """
         sub = self.mobius_add(-p1, p2, c)
         sub_norm = sub.norm(dim=-1, p=2, keepdim=True).clamp_min(self.min_norm)
         lam = self._lambda_x(p1, c)
@@ -78,18 +162,46 @@ class PoincareBall(Manifold):
         return 2 / sqrt_c / lam * artanh(sqrt_c * sub_norm) * sub / sub_norm
 
     def expmap0(self, u, c):
+        """
+        Exponential map of vector u at the origin.
+
+        Args:
+            u (torch.Tensor): Vector in tangent space.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Point on the manifold.
+        """
         sqrt_c = c ** 0.5
         u_norm = torch.clamp_min(u.norm(dim=-1, p=2, keepdim=True), self.min_norm)
         gamma_1 = tanh(sqrt_c * u_norm) * u / (sqrt_c * u_norm)
         return gamma_1
 
     def logmap0(self, p, c):
+        """
+        Logarithmic map of point p at the origin.
+
+        Args:
+            p (torch.Tensor): Point on the manifold.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Vector in tangent space.
+        """
         sqrt_c = c ** 0.5
         p_norm = p.norm(dim=-1, p=2, keepdim=True).clamp_min(self.min_norm)
         scale = 1. / sqrt_c * artanh(sqrt_c * p_norm) / p_norm
         return scale * p
 
     def mobius_add(self, x, y, c, dim=-1):
+        """
+        Mobius addition of points x and y on the Poincare ball.
+
+        Args:
+            x, y (torch.Tensor): Points on the manifold.
+            c (float): Curvature parameter.
+            dim (int): Dimension along which to add.
+        Returns:
+            torch.Tensor: Result of Mobius addition.
+        """
         x2 = x.pow(2).sum(dim=dim, keepdim=True)
         y2 = y.pow(2).sum(dim=dim, keepdim=True)
         xy = (x * y).sum(dim=dim, keepdim=True)
@@ -98,6 +210,16 @@ class PoincareBall(Manifold):
         return num / denom.clamp_min(self.min_norm)
 
     def mobius_matvec(self, m, x, c):
+        """
+        Hyperbolic matrix-vector multiplication on the Poincare ball.
+
+        Args:
+            m (torch.Tensor): Matrix.
+            x (torch.Tensor): Vector.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Result of multiplication.
+        """
         sqrt_c = c ** 0.5
         x_norm = x.norm(dim=-1, keepdim=True, p=2).clamp_min(self.min_norm)
         mx = x @ m.transpose(-1, -2)
@@ -113,10 +235,30 @@ class PoincareBall(Manifold):
 
 
     def init_weights(self, w, c, irange=1e-5):
+        """
+        Initialize random weights on the Poincare ball manifold.
+
+        Args:
+            w (torch.Tensor): Weights to initialize.
+            c (float): Curvature parameter.
+            irange (float): Initialization range.
+        Returns:
+            torch.Tensor: Initialized weights.
+        """
         w.data.uniform_(-irange, irange)
         return w
 
     def _gyration(self, u, v, w, c, dim: int = -1):
+        """
+        Compute the gyration operation for Mobius addition.
+
+        Args:
+            u, v, w (torch.Tensor): Points/vectors on the manifold.
+            c (float): Curvature parameter.
+            dim (int): Dimension along which to operate.
+        Returns:
+            torch.Tensor: Result of gyration.
+        """
         u2 = u.pow(2).sum(dim=dim, keepdim=True)
         v2 = v.pow(2).sum(dim=dim, keepdim=True)
         uv = (u * v).sum(dim=dim, keepdim=True)
@@ -129,26 +271,76 @@ class PoincareBall(Manifold):
         return w + 2 * (a * u + b * v) / d.clamp_min(self.min_norm)
 
     def inner(self, x, c, u, v=None, keepdim=False):
+        """
+        Compute inner product for tangent vectors at point x on the Poincare ball.
+
+        Args:
+            x (torch.Tensor): Point on the manifold.
+            c (float): Curvature parameter.
+            u, v (torch.Tensor): Tangent vectors.
+            keepdim (bool): Whether to keep dimensions.
+        Returns:
+            torch.Tensor: Inner product value.
+        """
         if v is None:
             v = u
         lambda_x = self._lambda_x(x, c)
         return lambda_x ** 2 * (u * v).sum(dim=-1, keepdim=keepdim)
 
     def ptransp(self, x, y, u, c):
+        """
+        Parallel transport of vector u from x to y on the Poincare ball.
+
+        Args:
+            x, y (torch.Tensor): Points on the manifold.
+            u (torch.Tensor): Vector to transport.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Transported vector.
+        """
         lambda_x = self._lambda_x(x, c)
         lambda_y = self._lambda_x(y, c)
         return self._gyration(y, -x, u, c) * lambda_x / lambda_y
 
     def ptransp_(self, x, y, u, c):
+        """
+        Alternate parallel transport of vector u from x to y on the Poincare ball.
+
+        Args:
+            x, y (torch.Tensor): Points on the manifold.
+            u (torch.Tensor): Vector to transport.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Transported vector.
+        """
         lambda_x = self._lambda_x(x, c)
         lambda_y = self._lambda_x(y, c)
         return self._gyration(y, -x, u, c) * lambda_x / lambda_y
 
     def ptransp0(self, x, u, c):
+        """
+        Parallel transport of vector u from the origin to x on the Poincare ball.
+
+        Args:
+            x (torch.Tensor): Point on the manifold.
+            u (torch.Tensor): Vector to transport.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Transported vector.
+        """
         lambda_x = self._lambda_x(x, c)
         return 2 * u / lambda_x.clamp_min(self.min_norm)
 
     def to_hyperboloid(self, x, c):
+        """
+        Map a point from the Poincare ball to the hyperboloid model.
+
+        Args:
+            x (torch.Tensor): Point on the Poincare ball.
+            c (float): Curvature parameter.
+        Returns:
+            torch.Tensor: Point on the hyperboloid.
+        """
         K = 1. / c
         sqrtK = K ** 0.5
         sqnorm = torch.norm(x, p=2, dim=1, keepdim=True) ** 2

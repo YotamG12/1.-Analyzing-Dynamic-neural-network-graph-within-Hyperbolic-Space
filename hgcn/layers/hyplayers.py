@@ -15,11 +15,24 @@ import itertools
 
 class HGATConv(nn.Module):
     """
-    Hyperbolic graph convolution layer.。
+    Hyperbolic graph attention convolution layer for GNNs.
     """
-
     def __init__(self, manifold, in_features, out_features, c_in, c_out, act=F.leaky_relu,
                  dropout=0.6, att_dropout=0.6, use_bias=True, heads=2, concat=False):
+        """
+        Initialize HGATConv layer.
+
+        Args:
+            manifold: Manifold object.
+            in_features (int): Input feature dimension.
+            out_features (int): Output feature dimension.
+            c_in, c_out (float): Input/output curvature.
+            act: Activation function.
+            dropout, att_dropout (float): Dropout rates.
+            use_bias (bool): Whether to use bias.
+            heads (int): Number of attention heads.
+            concat (bool): Whether to concatenate heads.
+        """
         super(HGATConv, self).__init__()
         out_features = out_features * heads
         self.linear = HypLinear(manifold, in_features, out_features, c_in, dropout=dropout, use_bias=use_bias)
@@ -29,6 +42,15 @@ class HGATConv(nn.Module):
         self.c_in = c_in
 
     def forward(self, x, edge_index):
+        """
+        Forward pass for HGATConv layer.
+
+        Args:
+            x (torch.Tensor): Node features.
+            edge_index (torch.Tensor): Edge indices.
+        Returns:
+            torch.Tensor: Output node features.
+        """
         h = self.linear.forward(x)
         h = self.agg.forward(h, edge_index)
         h = self.hyp_act.forward(h)
@@ -37,11 +59,22 @@ class HGATConv(nn.Module):
 
 class HGCNConv(nn.Module):
     """
-    Hyperbolic graph convolution layer, from hgcn。
+    Hyperbolic graph convolution layer (from HGCN).
     """
-
     def __init__(self, manifold, in_features, out_features, c_in=1.0, c_out=1.0, dropout=0.6, act=F.leaky_relu,
                  use_bias=True):
+        """
+        Initialize HGCNConv layer.
+
+        Args:
+            manifold: Manifold object.
+            in_features (int): Input feature dimension.
+            out_features (int): Output feature dimension.
+            c_in, c_out (float): Input/output curvature.
+            dropout (float): Dropout rate.
+            act: Activation function.
+            use_bias (bool): Whether to use bias.
+        """
         super(HGCNConv, self).__init__()
         self.linear = HypLinear(manifold, in_features, out_features, c_in, dropout=dropout)
         self.agg = HypAgg(manifold, c_in, out_features, bias=use_bias)
@@ -50,6 +83,15 @@ class HGCNConv(nn.Module):
         self.c_in = c_in
 
     def forward(self, x, edge_index):
+        """
+        Forward pass for HGCNConv layer.
+
+        Args:
+            x (torch.Tensor): Node features.
+            edge_index (torch.Tensor): Edge indices.
+        Returns:
+            torch.Tensor: Output node features.
+        """
         h = self.linear.forward(x)
         h = self.agg.forward(h, edge_index)
         h = self.hyp_act.forward(h)
@@ -58,10 +100,20 @@ class HGCNConv(nn.Module):
 
 class HypLinear(nn.Module):
     """
-    Hyperbolic linear layer.
+    Hyperbolic linear transformation layer.
     """
-
     def __init__(self, manifold, in_features, out_features, c, dropout=0.6, use_bias=True):
+        """
+        Initialize HypLinear layer.
+
+        Args:
+            manifold: Manifold object.
+            in_features (int): Input feature dimension.
+            out_features (int): Output feature dimension.
+            c (float): Curvature.
+            dropout (float): Dropout rate.
+            use_bias (bool): Whether to use bias.
+        """
         super(HypLinear, self).__init__()
         self.manifold = manifold
         self.in_features = in_features
@@ -74,10 +126,21 @@ class HypLinear(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
+        """
+        Reset layer parameters using glorot and zeros initialization.
+        """
         glorot(self.weight)
         zeros(self.bias)
 
     def forward(self, x):
+        """
+        Forward pass for HypLinear layer.
+
+        Args:
+            x (torch.Tensor): Node features.
+        Returns:
+            torch.Tensor: Output node features.
+        """
         drop_weight = F.dropout(self.weight, p=self.dropout, training=self.training)
         mv = self.manifold.mobius_matvec(drop_weight, x, self.c)
         res = self.manifold.proj(mv, self.c)
@@ -90,6 +153,9 @@ class HypLinear(nn.Module):
         return res
 
     def extra_repr(self):
+        """
+        String representation of HypLinear layer.
+        """
         return 'in_features={}, out_features={}, c={}'.format(
             self.in_features, self.out_features, self.c
         )
@@ -99,8 +165,15 @@ class HypAct(Module):
     """
     Hyperbolic activation layer.
     """
-
     def __init__(self, manifold, c_in, c_out, act):
+        """
+        Initialize HypAct layer.
+
+        Args:
+            manifold: Manifold object.
+            c_in, c_out (float): Input/output curvature.
+            act: Activation function.
+        """
         super(HypAct, self).__init__()
         self.manifold = manifold
         self.c_in = c_in
@@ -108,11 +181,22 @@ class HypAct(Module):
         self.act = act
 
     def forward(self, x):
+        """
+        Forward pass for HypAct layer.
+
+        Args:
+            x (torch.Tensor): Node features.
+        Returns:
+            torch.Tensor: Activated node features.
+        """
         xt = self.act(self.manifold.logmap0(x, c=self.c_in))
         xt = self.manifold.proj_tan0(xt, c=self.c_out)
         return self.manifold.proj(self.manifold.expmap0(xt, c=self.c_out), c=self.c_out)
 
     def extra_repr(self):
+        """
+        String representation of HypAct layer.
+        """
         return 'c_in={}, c_out={}'.format(
             self.c_in, self.c_out
         )
@@ -120,10 +204,18 @@ class HypAct(Module):
 
 class HypAggAtt(MessagePassing):
     """
-    Hyperbolic aggregation layer using degree.
+    Hyperbolic aggregation layer using attention.
     """
-
     def __init__(self, manifold, c, out_features, bias=True):
+        """
+        Initialize HypAggAtt layer.
+
+        Args:
+            manifold: Manifold object.
+            c (float): Curvature.
+            out_features (int): Output feature dimension.
+            bias (bool): Whether to use bias.
+        """
         super(HypAggAtt, self).__init__()
         self.manifold = manifold
         self.c = c
@@ -131,6 +223,15 @@ class HypAggAtt(MessagePassing):
         self.mlp = nn.Sequential(nn.Linear(out_features * 2, 1))
 
     def forward(self, x, edge_index=None):
+        """
+        Forward pass for HypAggAtt layer.
+
+        Args:
+            x (torch.Tensor): Node features.
+            edge_index (torch.Tensor): Edge indices.
+        Returns:
+            torch.Tensor: Aggregated node features.
+        """
         x_tangent = self.manifold.logmap0(x, c=self.c)
 
         edge_index, _ = remove_self_loops(edge_index)
@@ -150,6 +251,9 @@ class HypAggAtt(MessagePassing):
         return output
 
     def extra_repr(self):
+        """
+        String representation of HypAggAtt layer.
+        """
         return 'c={}'.format(self.c)
 
 
@@ -157,8 +261,16 @@ class HypAgg(MessagePassing):
     """
     Hyperbolic aggregation layer using degree.
     """
-
     def __init__(self, manifold, c, out_features, bias=True):
+        """
+        Initialize HypAgg layer.
+
+        Args:
+            manifold: Manifold object.
+            c (float): Curvature.
+            out_features (int): Output feature dimension.
+            bias (bool): Whether to use bias.
+        """
         super(HypAgg, self).__init__()
         self.manifold = manifold
         self.manifold = PoincareBall()
@@ -173,6 +285,18 @@ class HypAgg(MessagePassing):
 
     @staticmethod
     def norm(edge_index, num_nodes, edge_weight=None, improved=False, dtype=None):
+        """
+        Compute normalized edge weights for aggregation.
+
+        Args:
+            edge_index (torch.Tensor): Edge indices.
+            num_nodes (int): Number of nodes.
+            edge_weight (torch.Tensor, optional): Edge weights.
+            improved (bool): Use improved normalization.
+            dtype: Data type.
+        Returns:
+            tuple: (edge_index, normalized edge weights)
+        """
         if edge_weight is None:
             edge_weight = torch.ones((edge_index.size(1),), dtype=dtype,
                                      device=edge_index.device)
@@ -189,6 +313,15 @@ class HypAgg(MessagePassing):
         return edge_index, deg_inv_sqrt[row] * edge_weight * deg_inv_sqrt[col]
 
     def forward(self, x, edge_index=None):
+        """
+        Forward pass for HypAgg layer.
+
+        Args:
+            x (torch.Tensor): Node features.
+            edge_index (torch.Tensor): Edge indices.
+        Returns:
+            torch.Tensor: Aggregated node features.
+        """
         x_tangent = self.manifold.logmap0(x, c=self.c)
         edge_index, norm = self.norm(edge_index, x.size(0), dtype=x.dtype)
         node_i = edge_index[0]
@@ -200,11 +333,28 @@ class HypAgg(MessagePassing):
         return output
 
     def extra_repr(self):
+        """
+        String representation of HypAgg layer.
+        """
         return 'c={}'.format(self.c)
 
 
 class HypAttAgg(MessagePassing):
+    """
+    Hyperbolic attention aggregation layer.
+    """
     def __init__(self, manifold, c, out_features, att_dropout=0.6, heads=1, concat=False):
+        """
+        Initialize HypAttAgg layer.
+
+        Args:
+            manifold: Manifold object.
+            c (float): Curvature.
+            out_features (int): Output feature dimension.
+            att_dropout (float): Attention dropout rate.
+            heads (int): Number of attention heads.
+            concat (bool): Whether to concatenate heads.
+        """
         super(HypAttAgg, self).__init__()
         self.manifold = manifold
         self.dropout = att_dropout
@@ -219,6 +369,15 @@ class HypAttAgg(MessagePassing):
         glorot(self.att_j)
 
     def forward(self, x, edge_index):
+        """
+        Forward pass for HypAttAgg layer.
+
+        Args:
+            x (torch.Tensor): Node features.
+            edge_index (torch.Tensor): Edge indices.
+        Returns:
+            torch.Tensor: Aggregated node features.
+        """
         edge_index, _ = remove_self_loops(edge_index)
         edge_index, _ = add_self_loops(edge_index,
                                        num_nodes=x.size(self.node_dim))
@@ -249,7 +408,16 @@ class HypAttAgg(MessagePassing):
 
 # refer to: https://github.com/ferrine/hyrnn/blob/master/hyrnn/nets.py
 class HypGRU(nn.Module):
+    """
+    Hyperbolic GRU recurrent layer for dynamic graphs.
+    """
     def __init__(self, args):
+        """
+        Initialize HypGRU layer.
+
+        Args:
+            args: Namespace of model hyperparameters.
+        """
         super(HypGRU, self).__init__()
         self.manifold = PoincareBall()
         self.nhid = args.nhid
@@ -263,15 +431,39 @@ class HypGRU(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
+        """
+        Reset GRU parameters using uniform initialization.
+        """
         stdv = 1.0 / math.sqrt(self.nhid)
         for weight in itertools.chain.from_iterable([self.weight_ih, self.weight_hh]):
             torch.nn.init.uniform_(weight, -stdv, stdv)
 
     def forward(self, hyperx, hyperh):
+        """
+        Forward pass for HypGRU layer.
+
+        Args:
+            hyperx (torch.Tensor): Input features.
+            hyperh (torch.Tensor): Hidden state.
+        Returns:
+            torch.Tensor: Output hidden state.
+        """
         out = self.mobius_gru_cell(hyperx, hyperh, self.weight_ih, self.weight_hh, self.bias)
         return out
 
     def mobius_gru_cell(self, input, hx, weight_ih, weight_hh, bias, nonlin=None, ):
+        """
+        Mobius GRU cell computation in hyperbolic space.
+
+        Args:
+            input (torch.Tensor): Input features.
+            hx (torch.Tensor): Hidden state.
+            weight_ih, weight_hh (torch.Tensor): Input/hidden weights.
+            bias (torch.Tensor): Bias terms.
+            nonlin: Nonlinearity function (optional).
+        Returns:
+            torch.Tensor: Output hidden state.
+        """
         W_ir, W_ih, W_iz = weight_ih.chunk(3)
         b_r, b_h, b_z = bias
         W_hr, W_hh, W_hz = weight_hh.chunk(3)
@@ -289,12 +481,35 @@ class HypGRU(nn.Module):
         return h_out
 
     def one_rnn_transform(self, W, h, U, x, b):
+        """
+        Mobius linear transformation for GRU cell.
+
+        Args:
+            W, U (torch.Tensor): Weight matrices.
+            h, x (torch.Tensor): Hidden/input features.
+            b (torch.Tensor): Bias.
+        Returns:
+            torch.Tensor: Transformed features.
+        """
         W_otimes_h = self.manifold.mobius_matvec(W, h)
         U_otimes_x = self.manifold.mobius_matvec(U, x)
         Wh_plus_Ux = self.manifold.mobius_add(W_otimes_h, U_otimes_x)
         return self.manifold.mobius_add(Wh_plus_Ux, b)
 
     def mobius_linear(self, input, weight, bias=None, hyperbolic_input=True, hyperbolic_bias=True, nonlin=None):
+        """
+        Mobius linear transformation in hyperbolic space.
+
+        Args:
+            input (torch.Tensor): Input features.
+            weight (torch.Tensor): Weight matrix.
+            bias (torch.Tensor, optional): Bias.
+            hyperbolic_input (bool): Whether input is hyperbolic.
+            hyperbolic_bias (bool): Whether bias is hyperbolic.
+            nonlin: Nonlinearity function (optional).
+        Returns:
+            torch.Tensor: Transformed features.
+        """
         if hyperbolic_input:
             output = self.manifold.mobius_matvec(weight, input)
         else:
@@ -311,12 +526,25 @@ class HypGRU(nn.Module):
 
 
 class TemporalAttentionLayer(nn.Module):
+    """
+    Temporal attention layer for dynamic graph neural networks.
+    """
     def __init__(self, 
                 input_dim, 
                 n_heads, 
                 num_time_steps, 
                 attn_drop, 
                 residual):
+        """
+        Initialize TemporalAttentionLayer.
+
+        Args:
+            input_dim (int): Input feature dimension.
+            n_heads (int): Number of attention heads.
+            num_time_steps (int): Number of time steps.
+            attn_drop (float): Attention dropout rate.
+            residual (bool): Whether to use residual connections.
+        """
         super(TemporalAttentionLayer, self).__init__()
         self.n_heads = n_heads
         self.num_time_steps = num_time_steps
@@ -377,11 +605,22 @@ class TemporalAttentionLayer(nn.Module):
         return outputs  # 所有节点聚合时序self-attention后的节点embedding，所有时间
 
     def feedforward(self, inputs):
+        """
+        Feedforward layer for temporal attention.
+
+        Args:
+            inputs (torch.Tensor): Input tensor.
+        Returns:
+            torch.Tensor: Output tensor after feedforward and residual.
+        """
         outputs = F.relu(self.lin(inputs))
         return outputs + inputs
 
 
     def xavier_init(self):
+        """
+        Xavier uniform initialization for all learnable parameters.
+        """
         nn.init.xavier_uniform_(self.position_embeddings)
         nn.init.xavier_uniform_(self.Q_embedding_weights)
         nn.init.xavier_uniform_(self.K_embedding_weights)

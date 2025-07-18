@@ -5,19 +5,43 @@ from config import args
 
 
 def uniform(size, tensor):
+    """
+    Initialize tensor with uniform distribution in [-1/sqrt(size), 1/sqrt(size)].
+
+    Args:
+        size (int): Size parameter for bound calculation.
+        tensor (torch.Tensor): Tensor to initialize.
+    Returns:
+        None. Modifies tensor in-place.
+    """
     bound = 1.0 / math.sqrt(size)
     if tensor is not None:
         tensor.data.uniform_(-bound, bound)
 
 
 def xavier_init(shape):
-    """Glorot & Bengio (AISTATS 2010) init."""
+    """
+    Xavier (Glorot & Bengio) initialization for numpy arrays.
+
+    Args:
+        shape (tuple): Shape of the array to initialize.
+    Returns:
+        torch.Tensor: Initialized tensor.
+    """
     init_range = np.sqrt(6.0 / (shape[0] + shape[1]))
     initial = np.random.uniform(low=-init_range, high=init_range, size=shape)
     return torch.Tensor(initial)
 
 
 def glorot(tensor):
+    """
+    Xavier (Glorot) initialization for PyTorch tensors.
+
+    Args:
+        tensor (torch.Tensor): Tensor to initialize.
+    Returns:
+        None. Modifies tensor in-place.
+    """
     if tensor is not None:
         stdv = math.sqrt(6.0 / (tensor.size(-2) + tensor.size(-1)))
         tensor.data.uniform_(-stdv, stdv)
@@ -27,6 +51,19 @@ def glorot(tensor):
 
 
 def prepare(data, t, detection=False):
+    """
+    Prepare edge indices and node lists for training or detection at time t.
+
+    Args:
+        data (dict): Data dictionary containing edge indices and node lists.
+        t (int): Time step.
+        detection (bool): If True, prepare for detection; else for training.
+    Returns:
+        tuple: If detection is False, returns
+            (edge_index, pos_index, neg_index, nodes, weights, new_pos_index, new_neg_index).
+        If detection is True, returns
+            (train_pos_edge_index, val_pos_edge_index, val_neg_edge_index, test_pos_edge_index, test_neg_edge_index).
+    """
     if detection == False:
         # obtain adj index
         edge_index = data['edge_index_list'][t].long().to(args.device)  # torch edge index

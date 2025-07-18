@@ -49,6 +49,14 @@ labels = lb.fit_transform(df['fos.name'])
 
 # === GRAPH (build adjacency list using references) ===
 def parse_refs(refs):
+    """
+    Parse references from a string and map to node indices.
+
+    Args:
+        refs (str): String representation of reference IDs.
+    Returns:
+        list: List of node indices for valid references.
+    """
     try:
         return [id2idx[r] for r in ast.literal_eval(refs) if r in id2idx]
     except:
@@ -69,6 +77,14 @@ df['time_bin'] = pd.cut(df['year'], bins=bins, labels=False, include_lowest=True
 
 
 def parse_refs_str(refs):
+    """
+    Parse references from a string to a Python list.
+
+    Args:
+        refs (str): String representation of reference IDs.
+    Returns:
+        list: List of reference IDs.
+    """
     try:
         return ast.literal_eval(refs) if isinstance(refs, str) else []
     except Exception:
@@ -101,6 +117,15 @@ ally = labels[train_idx + val_idx]
 
 # === SAVE ===
 def save_pickle(data, name):
+    """
+    Save data to a pickle file in the output directory.
+
+    Args:
+        data: Data to save.
+        name (str): Name for the output file (without extension).
+    Returns:
+        None. Writes file to disk.
+    """
     with open(os.path.join(OUTPUT_DIR, f"ind.dblpv13.{name}"), "wb") as f:
         pickle.dump(data, f)
 

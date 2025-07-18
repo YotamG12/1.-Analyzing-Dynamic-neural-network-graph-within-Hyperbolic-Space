@@ -128,26 +128,7 @@ for epoch in range(args.max_epoch):
         att_output = model.ddy_attention_layer(X_val)
         att_output_fix = att_output[:, -1, :]
         # === Step: Record per-node average anomaly score std over time ===
-    """ att_output_np = att_output.detach().cpu().numpy()  # [N, T, F]
-        node_std_vals = np.std(att_output_np, axis=1)      # [N], std over time for each node
-
-        paper_ids = df_meta['id'].values if 'id' in df_meta.columns else np.arange(len(node_std_vals))
-
-        for node_id, paper_id, std_val in zip(range(len(node_std_vals)), paper_ids, node_std_vals):
-            node_anomaly_std_log[node_id]['paper_id'] = paper_id
-            node_anomaly_std_log[node_id][f'epoch {epoch} average anomaly score std'] = std_val
-
-
-        records = []
-        for node_id, stats in node_anomaly_std_log.items():
-            row = {'node_id': node_id, 'paper_id': stats.pop('paper_id')}
-            row.update(stats)
-            records.append(row)
-
-        df_anomaly_wide = pd.DataFrame(records)
-        df_anomaly_wide = df_anomaly_wide.sort_values(by='node_id')
-        df_anomaly_wide.to_csv("node_anomaly_std_per_epoch.csv", index=False)
-        print("✅ Saved wide-format anomaly std CSV to: node_anomaly_std_per_epoch.csv")"""
+    
         if len(idx_val) > 0 and att_output_fix.shape[0] > np.max(idx_val):
             val_pred = att_output_fix[idx_val].max(1)[1]
             acc_val = (val_pred == labels[idx_val]).float().mean().item()
@@ -201,6 +182,24 @@ def validate_with_noise_injection(
     G_original, embedding_matrix, edge_index, model, T,
     idx_val, labels, n_iters=30, n_noise_nodes=10, connect_prob=0.5
 ):
+    """
+    Inject synthetic noise nodes into the citation graph and evaluate model robustness to noise.
+
+    Args:
+        G_original (networkx.Graph): Original citation graph.
+        embedding_matrix (torch.Tensor): Node embeddings over time, shape [N, T, F].
+        edge_index (torch.Tensor): Edge indices for PyG model.
+        model (torch.nn.Module): GNN model for anomaly detection.
+        T (int): Number of time steps.
+        idx_val (array-like): Validation node indices.
+        labels (torch.Tensor): Node labels.
+        n_iters (int): Number of noise injection iterations.
+        n_noise_nodes (int): Number of synthetic noise nodes to inject per iteration.
+        connect_prob (float): Probability of connecting noise nodes to others.
+
+    Returns:
+        list of dict: Validation results per iteration, including anomaly scores and accuracy.
+    """
     device = embedding_matrix.device
     N, T_actual, F = embedding_matrix.shape
     assert T == T_actual, "Mismatch in time dimension"
@@ -323,7 +322,15 @@ scores_per_time = np.stack(scores_per_time, axis=1)
 
 
 def compute_degrees(df_meta):
-    """Compute in-degree and out-degree lists for all nodes (to be used in scatter plots)."""
+    """
+    Compute in-degree and out-degree for all nodes (papers) in the metadata DataFrame.
+
+    Args:
+        df_meta (pd.DataFrame): DataFrame containing paper metadata, including 'id' and 'references'.
+
+    Returns:
+        tuple: (in_degrees, out_degrees), each a list of counts per node.
+    """
     in_degrees = []
     out_degrees = []
 
@@ -375,31 +382,24 @@ top5_idx = np.argsort(avg_scores)[-5:]             # indices of top 5 (most anom
 bottom5_idx = np.argsort(avg_scores)[:5]           # indices of bottom 5 (least anomalous)
 
 # === Step 11: Visualizations ===
-"""in_degrees, out_degrees = compute_degrees(df_meta)
-highlight_paper('53e9b5e0b7602d9704131ef1', df_meta, anomaly_scores, in_degrees, out_degrees, save_dir)"""
-plot_temporal_anomaly_distribution(att_output, save_dir)
-#plot_temporal_sharp_changes(scores_per_time, save_dir)
-#plot_bottom5_lowest_delta_changes(scores_per_time, save_dir)
-plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir,df_meta)
-#plot_temporal_dull_anomaly_changes(scores_per_time, save_dir, df_meta)
-#compute_and_plot_anomaly_scores(att_output, df_meta, save_dir)
+# === Parse command-line arguments for graph type ===
+graph_type = args.graph_type
 
-top5_anomalies = get_top5_anomalies_with_delta(scores_per_time, df_meta)
-for anomaly in top5_anomalies:
-    print(f"Top Anomaly • Node {anomaly['Node']} | Paper ID: {anomaly['Paper ID']} | Year: {anomaly['Year']} | Title: {anomaly['Title']} | Δ: {anomaly['Delta']:.4f}")
-
-plot_as_std_histogram(scores_per_time, save_dir)
-#plot_top10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
-#plot_bottom10_std_delta_traces(scores_per_time, T, save_dir, df_meta)
-#detect_and_plot_sleeping_beauties_by_delta(scores_per_time, df_meta, save_dir)
-#detect_and_plot_falling_stars_by_delta(scores_per_time, df_meta, save_dir)
-plot_moving_window_histograms_with_top_nodes(
-    att_output,  # shape [N, T]
-    window_size=10,
-    step_size=5,
-    save_dir=Path("plots/moving_histograms")
-)
-plot_absolute_sharp_changes(scores_per_time, save_dir=Path("plots"), df_meta=df_meta)
+if graph_type == "temporal_anomaly_distribution":
+    plot_temporal_anomaly_distribution(att_output, save_dir)
+elif graph_type == "temporal_sharp_changes":
+    plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir, df_meta)
+elif graph_type == "as_std_histogram":
+    plot_as_std_histogram(scores_per_time, save_dir)
+elif graph_type == "moving_window_histograms":
+    plot_moving_window_histograms_with_top_nodes(
+        att_output,
+        window_size=10,
+        step_size=5,
+        save_dir=Path("plots/moving_histograms")
+    )
+else:
+    print(f"Unknown graph_type: {graph_type}. No plot generated.")
 
 
 

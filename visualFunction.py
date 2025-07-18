@@ -6,7 +6,17 @@ from collections import Counter
 import os
 
 def compute_and_plot_anomaly_scores(att_output, df_meta, save_dir):
-    """Computes per-time-step anomaly scores and plots top/bottom anomalous papers."""
+    """
+    Compute anomaly scores for each node at each time step using IsolationForest, then plot and print top/bottom anomalous papers.
+    
+    Args:
+        att_output (torch.Tensor): Node feature tensor of shape [N, T, F].
+        df_meta (pd.DataFrame): Metadata DataFrame with node info (id, title, year, etc.).
+        save_dir (Path): Directory to save plots.
+    
+    Returns:
+        None. Saves plots and prints metadata to console.
+    """
     N, T, F = att_output.shape
     scores_per_time = []
 
@@ -36,7 +46,17 @@ def compute_and_plot_anomaly_scores(att_output, df_meta, save_dir):
     plot_anomaly_score_traces(top5_idx, bottom5_idx, scores_per_time, T, save_dir)
 
 def print_top_bottom_anomalous_papers(top5_idx, bottom5_idx, df_meta):
-    """Prints metadata for top-5 and bottom-5 anomalous papers."""
+    """
+    Print metadata for the top-5 and bottom-5 anomalous papers by average anomaly score.
+    
+    Args:
+        top5_idx (array-like): Indices of top 5 anomalous nodes.
+        bottom5_idx (array-like): Indices of bottom 5 least anomalous nodes.
+        df_meta (pd.DataFrame): Metadata DataFrame.
+    
+    Returns:
+        None. Prints to console.
+    """
     print("\nTop 5 Anomalous Papers (by average score):")
     for idx in top5_idx:
         pid   = df_meta.loc[idx, 'id'] if 'id' in df_meta.columns else idx
@@ -52,7 +72,19 @@ def print_top_bottom_anomalous_papers(top5_idx, bottom5_idx, df_meta):
         print(f"  • Node {idx} | Paper ID: {pid} | Year: {year} | Title: {title}")
 
 def plot_anomaly_score_traces(top5_idx, bottom5_idx, scores_per_time, T, save_dir):
-    """Plots anomaly score traces for top-5 and bottom-5 anomalous papers."""
+    """
+    Plot anomaly score traces over time for top-5 and bottom-5 anomalous nodes.
+    
+    Args:
+        top5_idx (array-like): Indices of top 5 anomalous nodes.
+        bottom5_idx (array-like): Indices of bottom 5 least anomalous nodes.
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        T (int): Number of time steps.
+        save_dir (Path): Directory to save plots.
+    
+    Returns:
+        None. Saves plots to disk.
+    """
     # Top-5
     plt.figure(figsize=(10, 6))
     for idx in top5_idx:
@@ -89,7 +121,16 @@ def plot_anomaly_score_traces(top5_idx, bottom5_idx, scores_per_time, T, save_di
     print(f"Saved bottom-5 anomaly trace plot to: {trace_path_bottom}")
 
 def plot_temporal_sharp_changes(scores_per_time, save_dir):
-    """Plots temporal sharp changes in anomaly scores for top nodes."""
+    """
+    Plot temporal sharp changes in anomaly scores for nodes with the most extreme changes.
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        save_dir (Path): Directory to save plot.
+    
+    Returns:
+        None. Saves plot to disk.
+    """
     as_diff = np.diff(scores_per_time, axis=1)  # shape [N, T-1]
     mean_diff = as_diff.mean()
     std_diff = as_diff.std()
@@ -128,8 +169,15 @@ def plot_temporal_sharp_changes(scores_per_time, save_dir):
 
 def plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir, df_meta):
     """
-    Plots the temporal sharp changes in anomaly scores for the 5 nodes with the largest sharp changes (highest max delta).
-    Prints metadata for each node as well.
+    Plot and print metadata for the 5 nodes with the largest sharp changes in anomaly scores (highest max delta).
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        save_dir (Path): Directory to save plot.
+        df_meta (pd.DataFrame): Metadata DataFrame.
+    
+    Returns:
+        None. Saves plot and prints metadata.
     """
     as_diff = np.diff(scores_per_time, axis=1)
     mean_diff = as_diff.mean()
@@ -162,8 +210,15 @@ def plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir, df_meta):
 
 def plot_temporal_dull_anomaly_changes(scores_per_time, save_dir, df_meta):
     """
-    Plots the temporal anomaly scores for the 5 nodes with the smallest sharp changes (lowest max delta).
-    Prints metadata for each node as well.
+    Plot and print metadata for the 5 nodes with the smallest sharp changes in anomaly scores (lowest max delta).
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        save_dir (Path): Directory to save plot.
+        df_meta (pd.DataFrame): Metadata DataFrame.
+    
+    Returns:
+        None. Saves plot and prints metadata.
     """
     as_diff = np.diff(scores_per_time, axis=1)
     mean_diff = as_diff.mean()
@@ -197,7 +252,16 @@ def plot_temporal_dull_anomaly_changes(scores_per_time, save_dir, df_meta):
 
 
 def plot_temporal_anomaly_distribution(att_output, save_dir):
-    """Plots histogram of anomaly score distribution across time steps."""
+    """
+    Plot histogram of anomaly score distribution for each time step.
+    
+    Args:
+        att_output (torch.Tensor): Node feature tensor [N, T, F].
+        save_dir (Path): Directory to save plots.
+    
+    Returns:
+        None. Saves plots to disk.
+    """
     N, T = att_output.shape[:2]
     for t in range(T):
         time_step_vectors = att_output[:, t, :].detach().cpu().numpy()
@@ -216,7 +280,17 @@ def plot_temporal_anomaly_distribution(att_output, save_dir):
         plt.close()
 
 def save_table_as_png_safe(data, filename, title):
-    """Saves tabular data as a PNG image."""
+    """
+    Save tabular data as a PNG image.
+    
+    Args:
+        data (list): Table data (rows).
+        filename (str or Path): Output PNG file path.
+        title (str): Table title.
+    
+    Returns:
+        None. Saves image to disk.
+    """
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.axis('tight')
     ax.axis('off')
@@ -231,7 +305,20 @@ def save_table_as_png_safe(data, filename, title):
     
 
 def highlight_paper(paper_id, df_meta, anomaly_scores, in_degrees, out_degrees, save_dir):
-    """Highlights a specific paper with detailed metadata."""
+    """
+    Highlight a specific paper by showing its metadata and plotting anomaly score vs. in/out degree.
+    
+    Args:
+        paper_id (str or int): Paper ID to highlight.
+        df_meta (pd.DataFrame): Metadata DataFrame.
+        anomaly_scores (np.ndarray): Anomaly scores for all nodes.
+        in_degrees (array-like): In-degree for all nodes.
+        out_degrees (array-like): Out-degree for all nodes.
+        save_dir (Path): Directory to save plots.
+    
+    Returns:
+        None. Prints info and saves plots.
+    """
     if paper_id not in df_meta['id'].values:
         print(f"Paper ID '{paper_id}' not found.")
         return
@@ -301,7 +388,16 @@ def highlight_paper(paper_id, df_meta, anomaly_scores, in_degrees, out_degrees, 
     plt.close()
 
 def get_top5_anomalies_with_delta(scores_per_time, df_meta):
-    """Returns top 5 anomalies with the sharpest delta in anomaly scores and their deltas."""
+    """
+    Get top 5 nodes with the sharpest delta (max change) in anomaly scores and their metadata.
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        df_meta (pd.DataFrame): Metadata DataFrame.
+    
+    Returns:
+        list of dict: Metadata and delta for top 5 nodes.
+    """
     deltas = np.abs(np.diff(scores_per_time, axis=1))  # Compute deltas across time steps
     max_deltas = deltas.max(axis=1)  # Maximum delta for each node
     top5_idx = np.argsort(max_deltas)[-5:]  # Indices of top 5 nodes with sharpest deltas
@@ -323,7 +419,16 @@ def get_top5_anomalies_with_delta(scores_per_time, df_meta):
     return top5_anomalies
 
 def plot_top5_highest_delta_changes(scores_per_time, save_dir):
-    """Plots a line graph for the top 5 nodes with the highest change in delta anomaly scores."""
+    """
+    Plot line graph for top 5 nodes with highest change in delta anomaly scores.
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        save_dir (Path): Directory to save plot.
+    
+    Returns:
+        None. Saves plot to disk.
+    """
     deltas = np.abs(np.diff(scores_per_time, axis=1))  # Compute deltas across time steps
     max_deltas = deltas.max(axis=1)  # Maximum delta for each node
     top5_idx = np.argsort(max_deltas)[-5:]  # Indices of top 5 nodes with highest deltas
@@ -346,7 +451,14 @@ def plot_top5_highest_delta_changes(scores_per_time, save_dir):
 
 def plot_bottom5_lowest_delta_changes(scores_per_time, save_dir):
     """
-    Plots a line graph for the 5 nodes with the lowest change in delta anomaly scores (most stable nodes).
+    Plot line graph for 5 nodes with lowest change in delta anomaly scores (most stable).
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        save_dir (Path): Directory to save plot.
+    
+    Returns:
+        None. Saves plot to disk.
     """
     deltas = np.abs(np.diff(scores_per_time, axis=1))  # Compute deltas across time steps
     max_deltas = deltas.max(axis=1)  # Maximum delta for each node
@@ -371,9 +483,14 @@ def plot_bottom5_lowest_delta_changes(scores_per_time, save_dir):
 
 def plot_top5_trace_highest_delta_per_timestep(scores_per_time, save_dir):
     """
-    For each time step, find the node with the highest delta anomaly score (change from previous time step),
-    then plot the trace (delta over time) for the top 5 unique nodes that appear most frequently as the highest delta node.
-    X-axis: time steps (range T), Y-axis: delta change in anomaly score.
+    For each time step, find the node with the highest delta anomaly score, then plot trace for top 5 unique nodes.
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        save_dir (Path): Directory to save plot.
+    
+    Returns:
+        None. Saves plot to disk.
     """
     deltas = np.abs(np.diff(scores_per_time, axis=1))  # shape [N, T-1]
     T = scores_per_time.shape[1]
@@ -401,8 +518,14 @@ def plot_top5_trace_highest_delta_per_timestep(scores_per_time, save_dir):
 
 def plot_as_std_histogram(scores_per_time, save_dir):
     """
-    Plots a histogram of the standard deviations of anomaly score (AS) vectors over time for all nodes.
-    Each node's std is calculated across time steps.
+    Plot histogram of standard deviations of anomaly scores over time for all nodes.
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        save_dir (Path): Directory to save plot.
+    
+    Returns:
+        None. Saves plot to disk.
     """
     stds = np.std(scores_per_time, axis=1)  # shape [N]
     plt.figure(figsize=(10, 6))
@@ -418,8 +541,16 @@ def plot_as_std_histogram(scores_per_time, save_dir):
 
 def plot_top10_std_delta_traces(scores_per_time, T, save_dir, df_meta):
     """
-    Plots delta anomaly score traces over time for the top 10 nodes with the highest standard deviation.
-    Prints metadata for each node as well.
+    Plot delta anomaly score traces for top 10 nodes with highest standard deviation, and print their metadata.
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        T (int): Number of time steps.
+        save_dir (Path): Directory to save plot.
+        df_meta (pd.DataFrame): Metadata DataFrame.
+    
+    Returns:
+        None. Saves plot and prints metadata.
     """
     stds = np.std(scores_per_time, axis=1)
     n_nodes = scores_per_time.shape[0]
@@ -459,9 +590,16 @@ def plot_top10_std_delta_traces(scores_per_time, T, save_dir, df_meta):
 
 def plot_moving_window_histograms_with_top_nodes(att_output, window_size, step_size, save_dir):
     """
-    For each time window:
-    - Histogram: plot mean anomaly score per node (not flattened!)
-    - Line plot: top-10 nodes with highest Δ anomaly score std in the window
+    For each time window, plot histogram of mean anomaly score per node and line plot for top-10 nodes with highest delta std.
+    
+    Args:
+        att_output (torch.Tensor): Node feature tensor [N, T, F].
+        window_size (int): Size of time window.
+        step_size (int): Step size for moving window.
+        save_dir (Path): Directory to save plots.
+    
+    Returns:
+        None. Saves plots to disk.
     """
     N, T = att_output.shape[:2]
     os.makedirs(save_dir, exist_ok=True)
@@ -522,7 +660,15 @@ def plot_moving_window_histograms_with_top_nodes(att_output, window_size, step_s
 
 def plot_absolute_sharp_changes(scores_per_time, save_dir, df_meta):
     """
-    Plots the absolute delta anomaly scores (|ΔAS|) over time for the top 5 nodes with the sharpest changes.
+    Plot absolute delta anomaly scores over time for top 5 nodes with sharpest changes, and print their metadata.
+    
+    Args:
+        scores_per_time (np.ndarray): Anomaly scores [N, T].
+        save_dir (Path): Directory to save plot.
+        df_meta (pd.DataFrame): Metadata DataFrame.
+    
+    Returns:
+        None. Saves plot and prints metadata.
     """
     as_diff = np.diff(scores_per_time, axis=1)  # shape [N, T-1]
     sharpness = np.max(np.abs(as_diff), axis=1)
