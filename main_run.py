@@ -398,6 +398,17 @@ elif graph_type == "moving_window_histograms":
         step_size=5,
         save_dir=Path("plots/moving_histograms")
     )
+elif graph_type == "All Graphs":
+    # Combine all graphs into one comprehensive plot
+    plot_temporal_anomaly_distribution(att_output, save_dir)
+    plot_temporal_sharp_anomaly_changes(scores_per_time, save_dir, df_meta)
+    plot_as_std_histogram(scores_per_time, save_dir)
+    plot_moving_window_histograms_with_top_nodes(
+        att_output,
+        window_size=10,
+        step_size=5,
+        save_dir=Path("plots/moving_histograms")
+    )   
 else:
     print(f"Unknown graph_type: {graph_type}. No plot generated.")
 

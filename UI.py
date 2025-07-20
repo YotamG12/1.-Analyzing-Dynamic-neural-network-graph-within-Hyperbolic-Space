@@ -79,7 +79,8 @@ class App(tk.Tk):
             "temporal_anomaly_distribution",
             "temporal_sharp_changes",
             "as_std_histogram",
-            "moving_window_histograms"
+            "moving_window_histograms",
+            "All Graphs"
         ]
 
         # Create UI components
@@ -117,7 +118,8 @@ class App(tk.Tk):
             "temporal_anomaly_distribution": "Shows the distribution of anomaly scores for each time slice.",
             "temporal_sharp_changes": "Highlights nodes with sharp changes in anomaly scores over time.",
             "as_std_histogram": "Displays a histogram of anomaly score standard deviations across all nodes.",
-            "moving_window_histograms": "Plots moving window histograms and delta traces for top nodes."
+            "moving_window_histograms": "Plots moving window histograms and delta traces for top nodes.",
+            "All Graphs": "Combines all graph types for comprehensive analysis."
         }
         self.graph_explanation_label = tk.Label(frame, text=self.graph_explanations[self.graph_type.get()], wraplength=400, fg="blue", justify="left", anchor="w")
         self.graph_explanation_label.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5, pady=2)
