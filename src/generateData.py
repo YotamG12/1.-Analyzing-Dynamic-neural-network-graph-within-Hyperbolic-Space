@@ -13,8 +13,8 @@ from config import args
 sys.stdout.reconfigure(encoding='utf-8')
 
 # === CONFIG ===
-INPUT_CSV = r"./data/final_filtered_by_fos_and_reference.csv"
-OUTPUT_DIR = r"./data/generate_custom_output"
+INPUT_CSV = r"src/data/final_filtered_by_fos_and_reference.csv"
+OUTPUT_DIR = r"src/data/generate_custom_output"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # === LOAD DATA ===

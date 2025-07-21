@@ -5,7 +5,7 @@ import os
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 # Load dataset
-df = pd.read_csv("./data/final_filtered_by_fos_and_reference.csv")
+df = pd.read_csv("src/data/final_filtered_by_fos_and_reference.csv")
 
 # Fill NaNs
 df['abstract'] = df['abstract'].fillna("")
@@ -19,7 +19,7 @@ X = vectorizer.fit_transform(df['abstract']).toarray()
 labels = df['fos.name'].str.replace(" ", "_")
 
 # Write dblpv13.content
-content_path = "./data/dblpv13.content"
+content_path = "src/data/dblpv13.content"
 with open(content_path, "w", encoding="utf-8") as f:
     for pid, row, label in zip(df['id'], X, labels):
         features_str = " ".join(map(str, row))
@@ -31,7 +31,7 @@ print(f"✅ Created: {content_path}")
 paper_id_set = set(df['id'])
 
 # Extract references
-cites_path = "./data/dblpv13.cites"
+cites_path = "src/data/dblpv13.cites"
 with open(cites_path, "w", encoding="utf-8") as f:
     for idx, row in df.iterrows():
         try:

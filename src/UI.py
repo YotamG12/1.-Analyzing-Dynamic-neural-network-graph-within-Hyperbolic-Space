@@ -192,11 +192,11 @@ class App(tk.Tk):
         Run the data generation scripts and log the result to the console.
         """
         try:
-            subprocess.run(["python", "generateData.py","--Time_stamps", str(self.time_slices.get()) ], check=True)
-            subprocess.run(["python", "generateContentFile"], check=True)  # Corrected filename
+            subprocess.run(["python", "src/generateData.py", "--Time_stamps", str(self.time_slices.get())], check=True, capture_output=True, text=True)
+            subprocess.run(["python", "src/generateContentFile"], check=True, capture_output=True, text=True)
             self._log_to_console("✅ Data generation completed.")
         except subprocess.CalledProcessError as e:
-            self._log_to_console(f"❌ Error: {e}")
+            self._log_to_console(f"❌ Error: {e}\n{e.stderr}")
 
     def run_main(self):
         """
@@ -204,17 +204,17 @@ class App(tk.Tk):
         """
         try:
             subprocess.run([
-                "python", "main_run.py",
+                "python", "src/main_run.py",
                 "--max_epoch", str(self.num_epochs.get()),
                 "--num_walks", str(self.num_walks.get()), 
                 "--workers",str(self.workers.get()),
                 "--Time_stamps", str(self.time_slices.get()),
                 "--validation_iteration",str(self.validation_iteration.get()),
                 "--graph_type", self.graph_type.get()
-            ], check=True)
+            ], check=True, capture_output=True, text=True)
             self._log_to_console("✅you can see the plots in the folder 'plots' in the pyton IDE.")
         except subprocess.CalledProcessError as e:
-            self._log_to_console(f"❌ Error: {e}")
+            self._log_to_console(f"❌ Error: {e}\n{e.stderr}")
 
     def _log_to_console(self, message):
         """

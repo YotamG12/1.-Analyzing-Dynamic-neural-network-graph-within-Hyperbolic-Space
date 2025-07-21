@@ -25,13 +25,13 @@ from visualFunction import print_top_bottom_anomalous_papers, highlight_paper, p
 import argparse
 from collections import defaultdict
 
-save_dir = Path("./plots/anomaly_score_plots")
+save_dir = Path("src/plots/anomaly_score_plots")
 os.makedirs(save_dir, exist_ok=True)
 sys.stdout.reconfigure(encoding='utf-8')
 
 # === Load metadata and snapshot graphs ===
-df_meta = pd.read_csv('./data/final_filtered_by_fos_and_reference.csv')
-with open('./data/generate_custom_output/ind.dblpv13.snapshot_graphs', 'rb') as f:
+df_meta = pd.read_csv('src/data/final_filtered_by_fos_and_reference.csv')
+with open('src/data/generate_custom_output/ind.dblpv13.snapshot_graphs', 'rb') as f:
  
     snapshot_graphs = pickle.load(f)
 
@@ -54,7 +54,7 @@ embedding_matrix = torch.stack([node2vec_embeddings[t] for t in range(T)], dim=1
 
 # === Step 2: Load citation data ===
 adj, features, labels, idx_train, idx_val, idx_test = load_citation_data(
-    dataset_str='dblpv13', use_feats=True, data_path='./data/generate_custom_output'
+    dataset_str='dblpv13', use_feats=True, data_path='src/data/generate_custom_output'
 )
 
 edge_index, _ = from_scipy_sparse_matrix(adj)
