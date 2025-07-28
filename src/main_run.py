@@ -189,7 +189,7 @@ def validate_with_noise_injection(
         G_original (networkx.Graph): Original citation graph.
         embedding_matrix (torch.Tensor): Node embeddings over time, shape [N, T, F].
         edge_index (torch.Tensor): Edge indices for PyG model.
-        model (torch.nn.Module): GNN model for anomaly detection.
+        model : ADIHS model.
         T (int): Number of time steps.
         idx_val (array-like): Validation node indices.
         labels (torch.Tensor): Node labels.
@@ -396,7 +396,7 @@ elif graph_type == "moving_window_histograms":
         att_output,
         window_size=10,
         step_size=5,
-        save_dir=Path("plots/moving_histograms")
+        save_dir=Path("src/plots/moving_histograms")
     )
 elif graph_type == "All Graphs":
     # Combine all graphs into one comprehensive plot
@@ -407,7 +407,7 @@ elif graph_type == "All Graphs":
         att_output,
         window_size=10,
         step_size=5,
-        save_dir=Path("plots/moving_histograms")
+        save_dir=Path("src/plots/moving_histograms")
     )   
 else:
     print(f"Unknown graph_type: {graph_type}. No plot generated.")
